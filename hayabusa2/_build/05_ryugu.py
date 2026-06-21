@@ -59,7 +59,7 @@ OWNED_TEX_PREFIX = "HB2_RyuguDisp"
 # 6 m craft). ~160 BU mean diameter; orchestrator rescales for any given shot.
 BODY_RADIUS = 80.0          # mean equatorial radius (BU)  -> ~160 BU diameter
 BODY_OBLATE = 0.87          # polar / equatorial  (Ryugu ~876/1004)
-BODY_RIDGE_GAIN = 0.06      # extra equatorial bulge for the sharp ridge line
+BODY_RIDGE_GAIN = 0.09      # extra equatorial bulge for the sharp ridge line
 
 # Close-surface dome footprint (keep what the orchestrator's ryugu cam expects).
 SURF_RADIUS = 14.0          # sphere radius (dome dims ~28 BU) ...
@@ -415,11 +415,12 @@ def _build_body(coll, mat):
         # Diamond horizontal-radius profile:
         #   near equator stay near full radius, then taper ~linearly to the poles
         #   (linear taper of horizontal radius = straight conical flanks = diamond).
-        #   blend a touch of cosine so flanks aren't perfectly straight.
+        #   Mostly-linear taper for crisp angular flanks, a touch of cosine just to
+        #   keep the poles from collapsing to a perfect point.
         taper = (1.0 - lat)
-        horiz_profile = 0.86 * taper + 0.14 * math.cos(phi)
+        horiz_profile = 0.94 * taper + 0.06 * math.cos(phi)
         # sharp equatorial ridge: narrow boost centred on the equator
-        ridge = math.exp(-(lat * 6.5) ** 2)      # ~1 at equator, ->0 quickly
+        ridge = math.exp(-(lat * 7.5) ** 2)      # ~1 at equator, ->0 quickly
         horiz_profile *= (1.0 + BODY_RIDGE_GAIN * ridge)
 
         new_horiz = BODY_RADIUS * horiz_profile
@@ -467,11 +468,18 @@ def _build_body(coll, mat):
     m3.direction = 'NORMAL'
 
     # --- studding boulders over the surface (so the limb looks rocky) ------
+    # Boulders are created on a smooth envelope, then RE-ANCHORED onto the
+    # TRUE displaced surface by raycasting against the evaluated body mesh (see
+    # _anchor_to_body below). They are parented to HB2_RyuguBody so they follow
+    # the body's runtime transform (the harness scales the body to 0.125 and
+    # moves it for the hero shot).
     pool = _build_rock_pool("HB2_RockPool_Body", count=16, seed0=7001)
     rng = random.Random(987654)
     n_body_boulders = 280
-    # approximate post-displacement mean radius for placement
+    # smooth envelope radius used only as a raycast START shell (well outside the
+    # displaced surface, whose peaks reach ~BODY_RADIUS*1.045).
     Rb = BODY_RADIUS * 1.04
+    boulders = []      # (obj, unit-direction) pairs for the re-anchor pass
     for i in range(n_body_boulders):
         # even-ish sphere distribution (uniform on sphere, then oblate-squashed)
         z = rng.uniform(-1.0, 1.0)
@@ -491,7 +499,7 @@ def _build_body(coll, mat):
             s = BODY_RADIUS * rng.uniform(0.06, 0.1)
         me_rock = pool[rng.randrange(len(pool))]
         b = bpy.data.objects.new(f"HB2_BodyBoulder{i}", me_rock)
-        # sit slightly proud of the surface
+        # provisional placement on the smooth envelope (re-anchored below)
         b.location = (px, py, pz)
         b.rotation_euler = Euler((rng.uniform(0, math.tau),
                                   rng.uniform(0, math.tau),
@@ -503,23 +511,71 @@ def _build_body(coll, mat):
             b.data.materials.append(mat)
         _shade_flat(b)
         _link_only(b, coll)
+        boulders.append((b, Vector((nx, ny, nz)), s))
 
     # --- Otohime: one big discrete angular boulder near the south pole -----
     oto_me = _make_rock_mesh("HB2_OtohimeMesh", seed=31337, subdiv=2,
                              jitter=0.42, squash=0.55)
     oto = bpy.data.objects.new("HB2_Otohime", oto_me)
-    # near south pole (-Z), sitting on the flattened cap
+    # near south pole (-Z); direction toward the flattened south cap
     oto_r = BODY_RADIUS * 0.16            # ~160x120x70 m scaled to the body
-    south = -BODY_RADIUS * BODY_OBLATE * 0.92
-    oto.location = (BODY_RADIUS * 0.1, -BODY_RADIUS * 0.06, south + oto_r * 0.3)
+    oto_dir = Vector((0.1, -0.06, -BODY_OBLATE * 0.92)).normalized()
+    oto.location = (Rb * oto_dir.x, Rb * oto_dir.y, Rb * oto_dir.z)
     oto.scale = (oto_r * 1.0, oto_r * 0.8, oto_r * 0.55)   # 160x120x70-ish ratio
     oto.rotation_euler = Euler((0.3, -0.2, 0.7))
     if not oto.data.materials:
         oto.data.materials.append(mat)
     _shade_flat(oto)
     _link_only(oto, coll)
+    boulders.append((oto, oto_dir, oto_r))
+
+    # --- RE-ANCHOR every boulder onto the displaced surface ----------------
+    # Evaluate the body (with its 3 Displace modifiers applied) and raycast each
+    # boulder from a point outside its radial direction toward the center; drop
+    # the boulder origin onto the hit point, embedded slightly so its base sinks
+    # into the surface instead of hovering. Then parent to the body so the whole
+    # rubble field rides the body's transform.
+    _anchor_boulders_to_body(body, boulders)
 
     return body
+
+
+def _anchor_boulders_to_body(body, boulders):
+    """Raycast each boulder onto the evaluated (displaced) body surface.
+
+    `boulders` is a list of (obj, unit_dir, size) where `unit_dir` is the unit
+    radial direction (object space, body-centered) the boulder lives along and
+    `size` is its representative scale. Each boulder origin is moved to the true
+    surface hit point minus a small embed along the radial direction so its base
+    sinks in (no floating). Boulders are then parented (keep-transform) to the
+    body so they follow the body's runtime scale/translation.
+    """
+    # ensure the body's Displace modifiers are evaluated before we raycast it
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    body_eval = body.evaluated_get(dg)
+    # the body sits at its own origin (loc 0, scale 1) during build, so object
+    # space == the body-centered frame we placed boulders in.
+    far = BODY_RADIUS * 2.5            # start well outside any displaced peak
+    body_mat = body.matrix_world.copy()
+    for obj, ndir, size in boulders:
+        ndir = ndir.normalized()
+        origin = ndir * far                       # outside the surface
+        direction = -ndir                          # straight toward center
+        hit, loc, nrm, _idx = body_eval.ray_cast(origin, direction)
+        if not hit:
+            # extremely unlikely; leave provisional placement but pull it in to
+            # the mean radius so it can't float far off the silhouette.
+            obj.location = ndir * (BODY_RADIUS * 0.96)
+        else:
+            # embed the boulder base: sink it inward by a fraction of its size so
+            # the rock's lower half is buried in the regolith (like the refs).
+            embed = min(size * 0.45, BODY_RADIUS * 0.05)
+            obj.location = loc - ndir * embed
+        # Parent to the body, preserving the world placement we just set so the
+        # boulder tracks the body's later scale/move (harness hero shot).
+        obj.parent = body
+        obj.matrix_parent_inverse = body_mat.inverted()
 
 
 # ----------------------------------------------------------------------------- #

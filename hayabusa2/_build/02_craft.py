@@ -531,15 +531,18 @@ def _build_hgas():
     the Y (depth) axis so their long span fits side-by-side.  Flat octagon
     plates with concentric ring pattern + rim + feed -- NOT parabolic dishes."""
     z_deck = HZ + 0.05
+    # Per JAXA refs (img 7/8/9): X-band HGA slightly larger, Ka-band a touch
+    # smaller, sitting side-by-side along the depth (Y) axis on splayed mounts.
     specs = [
-        dict(tag="HGA_X", x=0.0, y=+0.40, r=0.46, leg_h=0.33,
+        dict(tag="HGA_X", x=0.0, y=+0.40, r=0.47, leg_h=0.33, tilt=+5.0,
              base_mat=M_ANTMETAL, face_mat=M_ANTWHITE),
-        dict(tag="HGA_Ka", x=0.0, y=-0.34, r=0.46, leg_h=0.30,
+        dict(tag="HGA_Ka", x=0.0, y=-0.36, r=0.42, leg_h=0.29, tilt=-5.0,
              base_mat=M_ANTMETAL, face_mat=M_ANTWHITE),
     ]
     for s in specs:
         cx, cy, r, lh = s["x"], s["y"], s["r"], s["leg_h"]
         z0 = z_deck + lh
+        tilt = math.radians(s.get("tilt", 0.0))  # splay lean about X
         # 4 short legs raising the dish
         leg_r = r * 0.62
         for i, (dx, dy) in enumerate([(leg_r, leg_r), (-leg_r, leg_r),
@@ -549,27 +552,32 @@ def _build_hgas():
                       verts=8)
             _finalize(lg, "ant", M_METAL, smooth_angle_deg=50.0)
             _bevel(lg, width=0.004, segments=1)
-        # base octagon (metal frame) -- thicker
+        # base octagon (metal frame) -- thicker.  Flat-topped octagon (22.5 deg)
+        # leaning slightly outward (splay) so the two dishes read as a pair.
         base = _ngon_plate("HB2_%s_base" % s["tag"], r, 0.05, sides=8,
-                           loc=(cx, cy, z0), rot=(0, 0, math.radians(22.5)))
+                           loc=(cx, cy, z0), rot=(tilt, 0, math.radians(22.5)))
         _finalize(base, "ant", s["base_mat"], smooth_angle_deg=20.0)
         _bevel(base, width=0.01, segments=2, angle_deg=20.0)
-        # face octagon (white phased-array) sitting just above the base
-        face = _ngon_plate("HB2_%s_face" % s["tag"], r * 0.86, 0.03, sides=8,
-                           loc=(cx, cy, z0 + 0.035),
-                           rot=(0, 0, math.radians(22.5)))
+        # face octagon (bright phased-array) sitting just above the base
+        face = _ngon_plate("HB2_%s_face" % s["tag"], r * 0.88, 0.025, sides=8,
+                           loc=(cx, cy - math.sin(tilt) * 0.035,
+                                z0 + 0.035 * math.cos(tilt)),
+                           rot=(tilt, 0, math.radians(22.5)))
         _finalize(face, "ant", s["face_mat"], smooth_angle_deg=20.0)
         _bevel(face, width=0.006, segments=1, angle_deg=20.0)
         # concentric ring pattern: 2 raised rings + center
         for j, rr in enumerate([r * 0.62, r * 0.34]):
             ring = _cyl("HB2_%s_ring%d" % (s["tag"], j), rr, 0.012,
-                        loc=(cx, cy, z0 + 0.05), verts=8)
-            ring.rotation_euler = (0, 0, math.radians(22.5))
+                        loc=(cx, cy - math.sin(tilt) * 0.05,
+                             z0 + 0.05 * math.cos(tilt)), verts=8)
+            ring.rotation_euler = (tilt, 0, math.radians(22.5))
             _finalize(ring, "ant", s["base_mat"], smooth_angle_deg=20.0)
             _bevel(ring, width=0.004, segments=1, angle_deg=20.0)
         # center feed
         feed = _cyl("HB2_%s_feed" % s["tag"], 0.05, 0.06,
-                    loc=(cx, cy, z0 + 0.07), verts=12)
+                    loc=(cx, cy - math.sin(tilt) * 0.07,
+                         z0 + 0.07 * math.cos(tilt)),
+                    rot=(tilt, 0, 0), verts=12)
         _finalize(feed, "ant", s["base_mat"], smooth_angle_deg=30.0)
         _bevel(feed, width=0.005, segments=1)
     _build_antenna_struts(specs)
@@ -721,36 +729,62 @@ def _build_underside_cameras():
 # propulsion: ion engines + glow + RCS
 # ----------------------------------------------------------------------------
 def _build_ion_engines():
-    """4 mu10 ion engines on a gimbal plate on the -Y depth face, firing -Y.
-    Recreate HB2_IonGlow0..3 (exact names) in HB2_FX with HB2_IonGlow."""
+    """Ion Engine System (IES) on the -Y depth face, firing -Y.  The real craft
+    (refs image 9) shows a LARGE WHITE square IES panel set into the gold bus,
+    with 4 mu10 thrusters in a diamond cluster.  Recreate HB2_IonGlow0..3
+    (exact names) in HB2_FX with HB2_IonGlow."""
     yface = -HY
-    # gimbal mounting plate flush to -Y face
-    plate = _box("HB2_IES_plate", (0.72, 0.10, 0.52), (0, yface - 0.04, -0.05))
-    _finalize(plate, "prop", M_METAL, smooth_angle_deg=40.0)
-    _bevel(plate, width=0.006, segments=2)
-    gim = _ngon_plate("HB2_IES_gimbal", 0.30, 0.06, sides=16,
-                      loc=(0, yface - 0.02, -0.05), rot=(math.pi / 2, 0, 0))
-    _finalize(gim, "prop", M_GOLD, smooth_angle_deg=40.0)
+    # Large WHITE IES panel recessed into the -Y face (the hero white panel of
+    # image 9).  Slightly proud, framed by a thin metal rim.
+    panel = _box("HB2_IES_panel", (0.78, 0.05, 0.78),
+                 (0.0, yface - 0.03, -0.02))
+    _finalize(panel, "prop", M_ANTWHITE, smooth_angle_deg=40.0)
+    _bevel(panel, width=0.01, segments=2, angle_deg=35.0)
+    # metal frame ring just proud of the white panel edges (4 thin bars)
+    fw = 0.05
+    for nm, sz, loc in [
+        ("HB2_IES_frameT", (0.86, 0.06, fw), (0.0, yface - 0.035, 0.40)),
+        ("HB2_IES_frameB", (0.86, 0.06, fw), (0.0, yface - 0.035, -0.44)),
+        ("HB2_IES_frameL", (fw, 0.06, 0.86), (-0.42, yface - 0.035, -0.02)),
+        ("HB2_IES_frameR", (fw, 0.06, 0.86), (0.42, yface - 0.035, -0.02)),
+    ]:
+        fr = _box(nm, sz, loc)
+        _finalize(fr, "prop", M_METAL, smooth_angle_deg=40.0)
+        _bevel(fr, width=0.005, segments=1)
+    # central gimbal boss the thrusters splay from
+    gim = _ngon_plate("HB2_IES_gimbal", 0.20, 0.05, sides=16,
+                      loc=(0, yface - 0.05, -0.02), rot=(math.pi / 2, 0, 0))
+    _finalize(gim, "prop", M_METAL, smooth_angle_deg=40.0)
     _bevel(gim, width=0.005, segments=2)
 
-    centers = [(-0.2, 0.10), (0.2, 0.10), (-0.2, -0.20), (0.2, -0.20)]
+    # 4 thrusters in a DIAMOND cluster (up / down / left / right of centre),
+    # matching the image-9 layout.
+    cz0 = -0.02
+    centers = [(0.0, cz0 + 0.26), (0.0, cz0 - 0.26),
+               (-0.26, cz0), (0.26, cz0)]
     for i, (cx, cz) in enumerate(centers):
-        # thruster body (round)
-        body = _cyl("HB2_IonThr%d_body" % i, 0.085, 0.12,
-                    loc=(cx, yface - 0.10, cz), rot=(math.pi / 2, 0, 0),
-                    verts=20)
+        # raised thruster collar (ring mount on the white panel)
+        collar = _cyl("HB2_IonThr%d_collar" % i, 0.105, 0.04,
+                      loc=(cx, yface - 0.06, cz), rot=(math.pi / 2, 0, 0),
+                      verts=24)
+        _finalize(collar, "prop", M_METAL, smooth_angle_deg=35.0)
+        _bevel(collar, width=0.004, segments=1)
+        # thruster body (round, recessed cone)
+        body = _cone("HB2_IonThr%d_body" % i, 0.092, 0.082, 0.10,
+                     loc=(cx, yface - 0.11, cz), rot=(-math.pi / 2, 0, 0),
+                     verts=24)
         _finalize(body, "prop", M_METAL, smooth_angle_deg=35.0)
-        _bevel(body, width=0.005, segments=2)
-        # gridded exit (dark disk)
-        grid = _cyl("HB2_IonThr%d_grid" % i, 0.082, 0.02,
-                    loc=(cx, yface - 0.165, cz), rot=(math.pi / 2, 0, 0),
-                    verts=24)
+        _bevel(body, width=0.004, segments=2)
+        # gridded exit (dark molybdenum grid disk)
+        grid = _cyl("HB2_IonThr%d_grid" % i, 0.080, 0.018,
+                    loc=(cx, yface - 0.155, cz), rot=(math.pi / 2, 0, 0),
+                    verts=28)
         _finalize(grid, "prop", M_BLACKMATTE, smooth_angle_deg=40.0)
         _bevel(grid, width=0.003, segments=1)
         # glow disk -- EXACT NAME, HB2_FX collection, HB2_IonGlow material
-        glow = _cyl("HB2_IonGlow%d" % i, 0.072, 0.012,
-                    loc=(cx, yface - 0.185, cz), rot=(math.pi / 2, 0, 0),
-                    verts=24)
+        glow = _cyl("HB2_IonGlow%d" % i, 0.070, 0.012,
+                    loc=(cx, yface - 0.17, cz), rot=(math.pi / 2, 0, 0),
+                    verts=28)
         _finalize(glow, "fx", M_IONGLOW, smooth_angle_deg=40.0,
                   shade_smooth=False)
 
@@ -881,13 +915,14 @@ def _build_greebles():
         (0.07, 0.12, 0.10, M_METAL), (0.10, 0.14, 0.12, M_GOLD),
         (0.08, 0.10, 0.16, M_BLACK), (0.06, 0.18, 0.10, M_SILVER),
     ]
-    # distribute greeble boxes across the -Y, +X, -X faces (which are emptier)
+    # distribute greeble boxes across the +X, -X and +Y faces (the -Y face is
+    # now reserved for the white IES panel, so we keep it clear of clutter).
     placements = [
-        (-0.28, -HY - 0.05, 0.30), (0.28, -HY - 0.05, -0.25),
+        (HX + 0.05, -0.30, 0.30), (HX + 0.05, 0.32, -0.25),
         (HX + 0.05, 0.30, 0.40), (HX + 0.05, -0.30, -0.30),
         (-HX - 0.05, 0.30, -0.35), (-HX - 0.05, -0.25, 0.40),
-        (0.0, -HY - 0.05, 0.40), (0.15, HY + 0.05, 0.45),
-        (-0.20, HY + 0.05, 0.40), (0.30, -HY - 0.05, 0.20),
+        (-HX - 0.05, -0.30, -0.05), (0.15, HY + 0.05, 0.45),
+        (-0.20, HY + 0.05, 0.40), (-HX - 0.05, 0.28, 0.42),
     ]
     for i, ((sx, sy, sz, mat), (px, py, pz)) in enumerate(zip(gb_specs, placements)):
         ob = _box("HB2_GreebleB_box%d" % i, (sx, sy, sz), (px, py, pz))
@@ -899,8 +934,9 @@ def _build_greebles():
         _finalize(nub, "det", M_METAL, smooth_angle_deg=45.0)
         _bevel(nub, width=0.002, segments=1)
 
+    # radiator-faced electronics box on the +Y front bay (kept off the -Y IES panel)
     radbox = _box("HB2_GreebleB_radbox", (0.22, 0.10, 0.18),
-                  (0.0, -HY - 0.06, -0.10))
+                  (-0.30, HY + 0.06, -0.30))
     _finalize(radbox, "det", M_RAD, smooth_angle_deg=45.0, shade_smooth=False)
     _bevel(radbox, width=0.005, segments=1)
 
@@ -942,7 +978,7 @@ def _build_greebles():
         _bevel(ob, width=0.003, segments=1)
 
     # --- bolt rings around the antenna bases on the deck ---
-    for tag, cx, cy, rr in [("HGAX", 0.0, 0.40, 0.50), ("HGAKa", 0.0, -0.34, 0.50)]:
+    for tag, cx, cy, rr in [("HGAX", 0.0, 0.40, 0.50), ("HGAKa", 0.0, -0.36, 0.45)]:
         n = 8
         for j in range(n):
             a = j * TAU / n

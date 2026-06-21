@@ -59,14 +59,16 @@ BUS_FACE_X = 0.50                      # +X / -X side faces of the bus (attach h
 WING_Z = 0.15
 
 # --- Yoke: a long thin ladder/H between the bus face and the inner panel ------
-YOKE_LEN     = 0.45                    # outboard reach of the yoke (X)
+# Lengthened to roughly DOUBLE the body-to-panel gap so the craft reads like the
+# real JAXA references (long thin striped boom with a clear gap to the wing).
+YOKE_LEN     = 0.95                    # outboard reach of the yoke (X)  (was 0.45)
 YOKE_X0      = BUS_FACE_X              # inboard end, on the bus face (x = 0.50)
-YOKE_X1      = BUS_FACE_X + YOKE_LEN   # outboard end (x = 0.95)
+YOKE_X1      = BUS_FACE_X + YOKE_LEN   # outboard end (x = 1.45)         (was 0.95)
 YOKE_Y       = 0.45                    # longerons sit at y = +/- this
 YOKE_BAR     = 0.045                   # longeron square cross-section (Y & Z)
 YOKE_CROSS_T = 0.04                    # cross-member thickness (X & Z)
 YOKE_CROSS_Y = 2.0 * YOKE_Y + YOKE_BAR # cross-member length in Y (spans longerons)
-N_CROSS      = 3                       # cross-members along the yoke
+N_CROSS      = 5                       # cross-members along the longer yoke (was 3)
 
 # --- Panels: THREE per wing, in a row along the span (X) ----------------------
 # WIDER in span (X) than deep (Y) so three of them make a LONG NARROW blade.
@@ -76,8 +78,11 @@ PANEL_Z     = 0.02                     # panel thickness (Z)
 PANEL_GAP   = 0.03                     # gap between adjacent panels (X)
 PANEL_PITCH = PANEL_X + PANEL_GAP      # center-to-center spacing = 0.67
 N_PANELS    = 3
-# Inner-panel center sits one half-panel outboard of the visible gap after yoke.
-PANEL_FIRST = YOKE_X1 + 0.0 + PANEL_X / 2.0   # = 0.95 + 0.32 = 1.27
+# Inner-panel center pushed outboard of the longer yoke so the inner panel edge
+# (PANEL_FIRST - PANEL_X/2 = 1.77 - 0.32 = 1.45) sits right at the boom tip
+# (YOKE_X1 = 1.45), giving a clear ~0.95 m bus-face-to-panel-edge gap (roughly
+# double the old ~0.45 m). The thin boom spans that whole gap, like the refs.
+PANEL_FIRST = 1.77                             # inner-panel center X (edge at 1.45)
 
 # --- Thin frame / border around each panel -----------------------------------
 FRAME_W = 0.02                         # frame bar width
@@ -99,10 +104,13 @@ RIB_Y = PANEL_Y + 0.01                 # rib length in Y
 RIB_Z = 0.045                          # rib height (Z)
 
 # --- Cell-grid material look --------------------------------------------------
-COL_CELL = (0.0110, 0.0180, 0.0600, 1.0)   # #0b1733 dark indigo cell
-COL_GRID = (0.0400, 0.0600, 0.1050, 1.0)   # #26344f lighter gridline
-CELLS_X  = 4                                # cell COLUMNS across one panel (span/X)
-CELLS_Y  = 3                                # cell ROWS along panel depth (Y)
+# Dark base so the cells stay near-black in shadow / deep-space shots, with the
+# blue arriving as a sunlit specular/coat sheen (see _build_solar_cell_material).
+COL_CELL  = (0.0080, 0.0140, 0.0520, 1.0)  # #0a1227 dark indigo cell (slightly deeper)
+COL_GRID  = (0.0300, 0.0460, 0.0880, 1.0)  # #1f2c46 gridline (a touch darker too)
+COL_SHEEN = (0.050, 0.230, 0.950, 1.0)     # vivid sapphire AR-coat sheen (lit-angle blue)
+CELLS_X   = 4                              # cell COLUMNS across one panel (span/X)
+CELLS_Y   = 3                              # cell ROWS along panel depth (Y)
 # -> 4 x 3 per panel  =>  12 x 3 cells per wing (3 panels in a row).
 
 # --- Edge-softening bevel on panels / frames ---------------------------------
@@ -199,14 +207,27 @@ def _ensure_material(name):
 
 def _build_solar_cell_material():
     """
-    (Re)build HB2_SolarCells as a crisp 2-D cell matrix (rows AND columns).
+    (Re)build HB2_SolarCells: a crisp 2-D cell matrix that reads DARK / near-black
+    in shadow but FLASHES vivid sapphire-blue where direct light grazes it -- the
+    "sunlit blue sheen" of the real arrays (lit panel in image 6; near-black panels
+    in the deep-space shot image 10).
 
-    A Brick texture driven by Object coordinates lays out CELLS_X columns across
-    the panel span (X) and CELLS_Y rows in depth (Y). Because the input is scaled
-    on BOTH axes the result is a true 2-axis grid (not single-axis stripes): the
-    brick "mortar" is the thin lighter gridline between near-square indigo cells.
-    A Principled BSDF gives a glassy cover-glass: metallic ~0.5, roughness ~0.15,
-    a slight clear coat, and a faint blue specular tint, like the reference art.
+    Layout: a Brick texture driven by Object coordinates lays out CELLS_X columns
+    across the panel span (X) and CELLS_Y rows in depth (Y); the brick "mortar" is
+    the thin gridline between near-square indigo cells. We keep that visible grid.
+
+    Look: the base color stays a deep, dark indigo so the cells sit near-black in
+    shadow. The blue is delivered as an anti-reflective COVER-GLASS sheen, not as a
+    bright albedo:
+      * a strong clear COAT (weight ~0.9) with very low coat roughness (~0.02) and
+        a saturated sapphire Coat Tint -> a crisp blue specular highlight wherever
+        a light actually hits, so lit cells flash sapphire while shadowed cells stay
+        dark;
+      * a saturated blue Specular Tint reinforces the same coloured highlight;
+      * a Layer Weight (Facing) Fresnel term mixes a touch of the sapphire sheen
+        into the base color at grazing angles, so the blue blooms toward the edges /
+        glancing-lit regions (the AR-coating look) without lifting the head-on,
+        in-shadow cells off black.
 
     We reuse the datablock if it exists but always clear+rebuild the node tree so
     repeated runs are identical.
@@ -226,9 +247,14 @@ def _build_solar_cell_material():
     n_brick = nt.nodes.new("ShaderNodeTexBrick")
     n_bump  = nt.nodes.new("ShaderNodeBump")
     n_rough = nt.nodes.new("ShaderNodeMath")   # gridlines slightly rougher
+    # Grazing-angle sapphire sheen: Fresnel (Layer Weight Facing) -> Mix into base.
+    n_lw    = nt.nodes.new("ShaderNodeLayerWeight")
+    n_sheen = nt.nodes.new("ShaderNodeMixRGB")  # base color <- sapphire at grazing
 
-    n_out.location   = (640, 0)
-    n_bsdf.location  = (340, 0)
+    n_out.location   = (820, 0)
+    n_bsdf.location  = (520, 0)
+    n_sheen.location = (300, 180)
+    n_lw.location    = (60, 320)
     n_brick.location = (40, 60)
     n_map.location   = (-180, 60)
     n_coord.location = (-380, 60)
@@ -266,24 +292,47 @@ def _build_solar_cell_material():
     b.inputs['Brick Width'].default_value = 1.0
     b.inputs['Row Height'].default_value = 1.0
 
-    # --- glassy cover-glass BSDF ---
-    n_bsdf.inputs['Base Color'].default_value = COL_CELL
-    nt.links.new(b.outputs['Color'], n_bsdf.inputs['Base Color'])
-    n_bsdf.inputs['Metallic'].default_value = 0.5     # semiconductor sheen
-    n_bsdf.inputs['IOR'].default_value = 1.5
-    # Clear-coat for a crisp specular highlight over the cells.
-    if 'Coat Weight' in n_bsdf.inputs:
-        n_bsdf.inputs['Coat Weight'].default_value = 0.4
-        n_bsdf.inputs['Coat Roughness'].default_value = 0.04
-    # Faint blue specular tint.
-    if 'Specular Tint' in n_bsdf.inputs:
-        n_bsdf.inputs['Specular Tint'].default_value = (0.6, 0.72, 1.0, 1.0)
+    # --- grazing-angle sapphire sheen mixed into the base color ---------------
+    # Layer Weight 'Facing' = 0 head-on, -> 1 at grazing angles. Blend a little of
+    # the saturated sapphire sheen over the dark cell base at glancing angles so
+    # the array picks up an AR-coating blue toward its edges / glancing-lit areas,
+    # while head-on (and in-shadow) cells stay near-black. Blend = 0.30 keeps the
+    # base black at facing and reaches ~0.30 sapphire at full grazing -> tinted,
+    # not flooded. (The big blue *highlight* comes from the coat/specular below;
+    # this term just colours the diffuse roll-off blue instead of grey.)
+    n_lw.inputs['Blend'].default_value = 0.22   # sharper grazing-only falloff
+    n_sheen.blend_type = 'MIX'
+    n_sheen.inputs['Color2'].default_value = COL_SHEEN
+    nt.links.new(b.outputs['Color'], n_sheen.inputs['Color1'])      # dark cell base
+    nt.links.new(n_lw.outputs['Facing'], n_sheen.inputs['Fac'])     # grazing -> more blue
 
-    # Roughness: cells glassy (~0.15), gridlines a touch rougher (~0.40).
+    # --- glassy cover-glass BSDF (dark base, vivid blue specular/coat) ---------
+    n_bsdf.inputs['Base Color'].default_value = COL_CELL
+    nt.links.new(n_sheen.outputs['Color'], n_bsdf.inputs['Base Color'])
+    n_bsdf.inputs['Metallic'].default_value = 0.42    # semiconductor sheen; lowered
+    #   slightly so the dark base stays near-black under diffuse ambient (the blue
+    #   now comes from the coat/specular, which fire on DIRECT light, not ambient).
+    n_bsdf.inputs['IOR'].default_value = 1.5
+    # Strong clear-coat -> a CRISP blue specular highlight wherever light hits.
+    # High weight + very low coat roughness = a tight, bright sapphire flash on
+    # lit cells; a saturated sapphire Coat Tint colours that highlight blue.
+    if 'Coat Weight' in n_bsdf.inputs:
+        n_bsdf.inputs['Coat Weight'].default_value = 0.9        # was 0.4
+        n_bsdf.inputs['Coat Roughness'].default_value = 0.02    # was 0.04 (crisper)
+    if 'Coat Tint' in n_bsdf.inputs:
+        n_bsdf.inputs['Coat Tint'].default_value = COL_SHEEN    # sapphire coat sheen
+    # Saturated blue specular tint reinforces the coloured highlight.
+    if 'Specular Tint' in n_bsdf.inputs:
+        n_bsdf.inputs['Specular Tint'].default_value = (0.10, 0.42, 1.0, 1.0)
+    if 'Specular IOR Level' in n_bsdf.inputs:
+        n_bsdf.inputs['Specular IOR Level'].default_value = 0.6  # a touch hotter spec
+
+    # Roughness: cells glassy (~0.10), gridlines a touch rougher (~0.38). Slightly
+    # glassier than before so the sunlit highlight stays tight and bright-blue.
     # Map brick factor (0 = mortar, 1 = cell) -> roughness via Multiply-Add.
     n_rough.operation = 'MULTIPLY_ADD'
-    n_rough.inputs[1].default_value = -0.25   # value * (-0.25) ...
-    n_rough.inputs[2].default_value = 0.40    # ... + 0.40 => cell~0.15, mortar~0.40
+    n_rough.inputs[1].default_value = -0.28   # value * (-0.28) ...
+    n_rough.inputs[2].default_value = 0.38    # ... + 0.38 => cell~0.10, mortar~0.38
     nt.links.new(b.outputs['Fac'], n_rough.inputs[0])
     nt.links.new(n_rough.outputs['Value'], n_bsdf.inputs['Roughness'])
 

@@ -237,54 +237,174 @@ def _build_earth_material(img):
 # Material: Clouds (procedural, white, semi-transparent)
 # ---------------------------------------------------------------------------
 def _build_cloud_material():
+    """Multi-scale procedural cloud shell.
+
+    Goal (ref: 'earth photo.jpg'): a real full-disc Earth look -- big thick
+    opaque cloud masses in some regions, thin wispy/swirling clouds in others,
+    and large fully-clear ocean gaps. NOT a uniform haze.
+
+    The shader builds a single 0..1 "cloud density" field from three octaves at
+    very different scales, then uses that ONE field to drive two things at once:
+        (a) the Transparent<->cloud Mix factor   -> where clouds exist at all
+        (b) the cloud BSDF brightness (color)     -> how thick/opaque they read
+    Because both are driven by density, thin wisps render dim & see-through while
+    dense fronts render bright & opaque -- exactly the variation we want.
+
+    Node graph (left -> right):
+        TexCoord(Object) -> Mapping
+          coverage: Voronoi(F1, scale~1.1) -> Ramp(coverage)   (big covered vs clear)
+          swirl:    Noise(distort, scale~4.2) -> Ramp(swirl)    (cyclonic bands/fronts)
+          detail:   Noise(scale~16) -> subtract-bias            (wispy edges)
+        combine -> Clamp -> "density" (0..1), which drives BOTH:
+            density -> Ramp(alpha) ......... Mix.Fac  (transparent vs cloud)
+            density -> MixRGB(grey..white) . Diffuse.Color  (thin dim vs thick bright)
+        Mix( Transparent , Diffuse , Fac=alpha ) -> Output
+    """
     mat, nt = _new_material(CLOUDS_MAT)
     _set_alpha_blend(mat)
     mat.use_backface_culling = False
     nodes, links = nt.nodes, nt.links
 
-    out = nodes.new("ShaderNodeOutputMaterial"); out.location = (760, 0)
-    mix = nodes.new("ShaderNodeMixShader");      mix.location = (520, 0)
-    transp = nodes.new("ShaderNodeBsdfTransparent"); transp.location = (300, 140)
-    diff = nodes.new("ShaderNodeBsdfDiffuse");   diff.location = (300, -120)
-    diff.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    out    = nodes.new("ShaderNodeOutputMaterial");  out.location    = (1180, 0)
+    mix    = nodes.new("ShaderNodeMixShader");       mix.location    = (980, 0)
+    transp = nodes.new("ShaderNodeBsdfTransparent"); transp.location = (760, 150)
+    diff   = nodes.new("ShaderNodeBsdfDiffuse");     diff.location   = (760, -160)
 
-    # Cloud pattern: large noise broken up by a second octave, thresholded.
-    texco = nodes.new("ShaderNodeTexCoord"); texco.location = (-760, 0)
-    map1 = nodes.new("ShaderNodeMapping");   map1.location = (-560, 0)
-    map1.inputs["Scale"].default_value = (1.0, 1.0, 1.0)
-    links.new(texco.outputs["Object"], map1.inputs["Vector"])
+    # --- Coordinates ---------------------------------------------------------
+    texco = nodes.new("ShaderNodeTexCoord"); texco.location = (-1180, 0)
+    mapn  = nodes.new("ShaderNodeMapping");  mapn.location  = (-1000, 0)
+    # A non-uniform stretch (clouds band zonally on a real Earth) + an arbitrary
+    # offset so the pattern doesn't sit symmetrically on the object axes.
+    mapn.inputs["Location"].default_value = (3.1, 1.7, 0.4)
+    mapn.inputs["Scale"].default_value    = (1.0, 0.72, 1.0)
+    links.new(texco.outputs["Object"], mapn.inputs["Vector"])
 
-    noise = nodes.new("ShaderNodeTexNoise"); noise.location = (-340, 80)
-    noise.inputs["Scale"].default_value = 3.2
-    noise.inputs["Detail"].default_value = 8.0
-    noise.inputs["Roughness"].default_value = 0.62
-    if "Distortion" in noise.inputs:
-        noise.inputs["Distortion"].default_value = 0.7
-    links.new(map1.outputs["Vector"], noise.inputs["Vector"])
+    # --- (1) COVERAGE: low-frequency mask -> big covered regions vs clear oceans
+    # A single big organic Noise octave (low Detail) gives broad smooth highs and
+    # lows -- large contiguous weather systems and large clear oceans -- without
+    # the radial "cells" a Voronoi would stamp in. This is the master gate.
+    cover = nodes.new("ShaderNodeTexNoise"); cover.location = (-760, 280)
+    cover.inputs["Scale"].default_value      = 1.25
+    cover.inputs["Detail"].default_value     = 2.0
+    cover.inputs["Roughness"].default_value  = 0.5
+    if "Distortion" in cover.inputs:
+        cover.inputs["Distortion"].default_value = 0.45   # warps the big masses
+    links.new(mapn.outputs["Vector"], cover.inputs["Vector"])
 
-    # Break-up mask (continents-of-cloud) so it isn't uniform fog.
-    noise2 = nodes.new("ShaderNodeTexNoise"); noise2.location = (-340, -160)
-    noise2.inputs["Scale"].default_value = 1.4
-    noise2.inputs["Detail"].default_value = 4.0
-    links.new(map1.outputs["Vector"], noise2.inputs["Vector"])
+    # Ramp the coverage: a wide clear band at the low end (big oceans), then a
+    # smooth rise into covered. Keep it gentle so coverage VARIES continuously
+    # (full -> partial -> none) rather than hard on/off.
+    cover_ramp = nodes.new("ShaderNodeValToRGB"); cover_ramp.location = (-540, 300)
+    ccr = cover_ramp.color_ramp
+    ccr.interpolation = 'EASE'
+    ccr.elements[0].position = 0.36   # below -> clear ocean
+    ccr.elements[0].color = (0, 0, 0, 1)
+    ccr.elements[1].position = 0.74   # above -> fully covered region
+    ccr.elements[1].color = (1, 1, 1, 1)
+    links.new(cover.outputs["Fac"], cover_ramp.inputs["Fac"])
 
-    combine = nodes.new("ShaderNodeMath"); combine.location = (-120, -40)
-    combine.operation = 'MULTIPLY'
-    links.new(noise.outputs["Fac"],  combine.inputs[0])
-    links.new(noise2.outputs["Fac"], combine.inputs[1])
+    # --- (2) SWIRL: mid-frequency distorted noise -> cyclonic banding/fronts ---
+    swirl = nodes.new("ShaderNodeTexNoise"); swirl.location = (-760, 20)
+    swirl.inputs["Scale"].default_value      = 4.2
+    swirl.inputs["Detail"].default_value     = 6.0
+    swirl.inputs["Roughness"].default_value  = 0.62
+    if "Lacunarity" in swirl.inputs:
+        swirl.inputs["Lacunarity"].default_value = 2.2
+    if "Distortion" in swirl.inputs:
+        swirl.inputs["Distortion"].default_value = 1.3   # high -> swirled fronts
+    links.new(mapn.outputs["Vector"], swirl.inputs["Vector"])
 
-    ramp = nodes.new("ShaderNodeValToRGB"); ramp.location = (90, -40)
-    cr = ramp.color_ramp
-    cr.interpolation = 'EASE'
-    # Thresholds tuned so clouds cover only ~40-50% (continents read through).
-    cr.elements[0].position = 0.30   # below -> clear sky (alpha 0)
-    cr.elements[0].color = (0, 0, 0, 1)
-    cr.elements[1].position = 0.52   # above -> opaque cloud (alpha 1)
-    cr.elements[1].color = (1, 1, 1, 1)
-    links.new(combine.outputs["Value"], ramp.inputs["Fac"])
+    # Gentle contrast on the swirl so bands have structure (not a flat 0.5 haze).
+    swirl_ramp = nodes.new("ShaderNodeValToRGB"); swirl_ramp.location = (-540, 40)
+    scr = swirl_ramp.color_ramp
+    scr.interpolation = 'EASE'
+    scr.elements[0].position = 0.30
+    scr.elements[0].color = (0, 0, 0, 1)
+    scr.elements[1].position = 0.78
+    scr.elements[1].color = (1, 1, 1, 1)
+    links.new(swirl.outputs["Fac"], swirl_ramp.inputs["Fac"])
 
-    # Alpha drives Transparent<->Diffuse mix (Fac 0 = transparent).
-    links.new(ramp.outputs["Color"], mix.inputs["Fac"])
+    # --- (3) DETAIL: high-frequency noise -> wispy edges / texture -------------
+    detail = nodes.new("ShaderNodeTexNoise"); detail.location = (-760, -240)
+    detail.inputs["Scale"].default_value     = 16.0
+    detail.inputs["Detail"].default_value    = 8.0
+    detail.inputs["Roughness"].default_value = 0.55
+    if "Distortion" in detail.inputs:
+        detail.inputs["Distortion"].default_value = 0.35
+    links.new(mapn.outputs["Vector"], detail.inputs["Vector"])
+
+    # Center the detail around 0 so it ADDS and SUBTRACTS (erodes wispy edges).
+    detail_bias = nodes.new("ShaderNodeMath"); detail_bias.location = (-540, -240)
+    detail_bias.operation = 'SUBTRACT'
+    links.new(detail.outputs["Fac"], detail_bias.inputs[0])
+    detail_bias.inputs[1].default_value = 0.5
+
+    # --- COMBINE -------------------------------------------------------------
+    # Strategy: COVERAGE is the master gate (keeps masses contiguous + preserves
+    # big clear oceans). The swirl MODULATES intensity *within* covered regions
+    # rather than punching holes, so fronts stay connected. Detail only nibbles
+    # the edges. This avoids the "popcorn" look of multiplying everything.
+    #
+    #   modulator = 0.55 + 0.45 * swirl        (range 0.55..1.0, never zero)
+    #   masses    = coverage * modulator
+    #   density   = masses + 0.16*detail_bias + 0.12*swirl   (edge wisps + arms)
+
+    modulator = nodes.new("ShaderNodeMath"); modulator.location = (-320, 60)
+    modulator.operation = 'MULTIPLY_ADD'
+    links.new(swirl_ramp.outputs["Color"], modulator.inputs[0])
+    modulator.inputs[1].default_value = 0.45   # swirl contrast inside masses
+    modulator.inputs[2].default_value = 0.55   # floor so masses never vanish
+    modulator.use_clamp = True
+
+    masses = nodes.new("ShaderNodeMath"); masses.location = (-120, 140)
+    masses.operation = 'MULTIPLY'
+    links.new(cover_ramp.outputs["Color"], masses.inputs[0])
+    links.new(modulator.outputs["Value"],  masses.inputs[1])
+
+    # Faint standalone swirl "arms" reaching slightly into clear gaps (fronts).
+    arms = nodes.new("ShaderNodeMath"); arms.location = (-120, -40)
+    arms.operation = 'MULTIPLY_ADD'
+    links.new(swirl_ramp.outputs["Color"], arms.inputs[0])
+    arms.inputs[1].default_value = 0.12
+    links.new(masses.outputs["Value"],     arms.inputs[2])
+
+    detailed = nodes.new("ShaderNodeMath"); detailed.location = (80, -40)
+    detailed.operation = 'MULTIPLY_ADD'
+    links.new(detail_bias.outputs["Value"], detailed.inputs[0])
+    detailed.inputs[1].default_value = 0.16    # gentle edge texture (not shatter)
+    links.new(arms.outputs["Value"],        detailed.inputs[2])
+
+    clamp = nodes.new("ShaderNodeClamp"); clamp.location = (260, -40)
+    clamp.inputs["Min"].default_value = 0.0
+    clamp.inputs["Max"].default_value = 1.0
+    links.new(detailed.outputs["Value"], clamp.inputs["Value"])
+
+    # --- DENSITY -> ALPHA (drives the Transparent<->cloud Mix factor) ----------
+    # A LINEAR ramp gives a long translucent transition: a low floor stays clear
+    # (oceans), the mid band yields thin see-through wisps, and the high end
+    # saturates to opaque thick masses. Linear (not Ease) keeps thin wisps from
+    # snapping straight to opaque, preserving real density variation.
+    alpha = nodes.new("ShaderNodeValToRGB"); alpha.location = (480, 120)
+    acr = alpha.color_ramp
+    acr.interpolation = 'LINEAR'
+    acr.elements[0].position = 0.30   # below -> fully clear sky (alpha 0)
+    acr.elements[0].color = (0, 0, 0, 1)
+    acr.elements[1].position = 0.88   # above -> fully opaque cloud (alpha 1)
+    acr.elements[1].color = (1, 1, 1, 1)
+    links.new(clamp.outputs["Result"], alpha.inputs["Fac"])
+
+    # --- DENSITY -> COLOR (thin clouds are dimmer/greyer, thick are bright) -----
+    # Mix a soft grey (thin) up to near-white (thick) by the SAME density field,
+    # so wisps don't read as bright as the dense fronts even where alpha > 0.
+    cloud_col = nodes.new("ShaderNodeMixRGB"); cloud_col.location = (480, -200)
+    cloud_col.blend_type = 'MIX'
+    cloud_col.inputs["Color1"].default_value = (0.42, 0.44, 0.48, 1.0)  # thin grey
+    cloud_col.inputs["Color2"].default_value = (0.96, 0.97, 1.0,  1.0)  # thick white
+    links.new(clamp.outputs["Result"], cloud_col.inputs["Fac"])
+    links.new(cloud_col.outputs["Color"], diff.inputs["Color"])
+
+    # --- Assemble: Fac 0 = transparent (clear), Fac 1 = cloud -----------------
+    links.new(alpha.outputs["Color"], mix.inputs["Fac"])
     links.new(transp.outputs["BSDF"], mix.inputs[1])
     links.new(diff.outputs["BSDF"],   mix.inputs[2])
     links.new(mix.outputs["Shader"],  out.inputs["Surface"])

@@ -1,19 +1,24 @@
 """
-06_materials.py  --  Spacecraft MLI / radiator material polish for the
-photorealistic Hayabusa2 model (Blender 5.1 / Eevee Next).
+06_materials.py  --  Spacecraft MLI / radiator / ion-engine-glow material
+authoring for the photorealistic Hayabusa2 model (Blender 5.1 / Eevee Next).
 
 GOAL
 ----
 Make the gold MLI read as bright, lacquered, reflective gold *foil* (like the
-real craft and the JAXA concept art) rather than a dull matte metal, and bring
-the other spacecraft-skin materials (black MLI, silver MLI, radiator) up to a
-physically believable specular look.
+real craft and the JAXA concept art) rather than a dull matte metal, bring the
+other spacecraft-skin materials (black MLI, silver MLI, radiator) up to a
+physically believable specular look, and give the ion-engine glow a soft,
+contained cyan-blue emission (like the JAXA refs) instead of a white blowout.
 
 DESIGN / SAFETY
 ---------------
-* `build()` is idempotent. It edits the EXISTING node trees of four named
-  materials IN PLACE. It never creates, deletes, or renames materials or nodes,
-  never touches geometry/objects, and performs no file IO / render / MCP calls.
+* `build()` is idempotent. For the four MLI/radiator materials it edits the
+  EXISTING node trees IN PLACE (never creating/deleting/renaming those mats or
+  their nodes). For `HB2_IonGlow` it is get-or-create: it makes the material and
+  its Emission->Output graph (plus a soft radial-falloff sub-graph) if missing,
+  so a from-scratch rebuild still works; on re-run it finds the existing nodes by
+  name and only re-sets their values. It never touches geometry/objects, and
+  performs no file IO / render / MCP calls.
 * The four MLI/radiator materials drive some Principled inputs through helper
   nodes (Base Color and Roughness come from ColorRamps; Normal from a Bump
   chain). Where an input is *linked* we set the value at its driver (the
@@ -24,7 +29,10 @@ DESIGN / SAFETY
   preserved; only ColorRamp stop colors and free BSDF inputs are adjusted.
 
 OWNED MATERIALS (only these are touched):
-    HB2_Gold_MLI, HB2_Black_MLI, HB2_Silver_MLI, HB2_Radiator
+    HB2_Gold_MLI, HB2_Black_MLI, HB2_Silver_MLI, HB2_Radiator, HB2_IonGlow
+
+The ion-glow geometry (HB2_IonGlow0-3 disks) is built/assigned BY NAME by a
+separate script; this module only authors the HB2_IonGlow *material*.
 """
 
 import bpy
@@ -89,6 +97,31 @@ def _set_ramp_stops(cr, stops):
         if i < len(cr.elements):
             cr.elements[i].position = pos
             cr.elements[i].color = col
+
+
+def _get_or_make_node(nt, name, bl_idname):
+    """Return the node called `name`, creating it (of type `bl_idname`) if it
+    does not already exist. Used only by the get-or-create HB2_IonGlow authoring
+    so a from-scratch rebuild works while re-runs stay idempotent (we find the
+    same node by name and only re-set its values)."""
+    node = nt.nodes.get(name)
+    if node is None or node.bl_idname != bl_idname:
+        # If a stale node with the same name but wrong type somehow exists,
+        # remove it so we author a clean, deterministic graph.
+        if node is not None:
+            nt.nodes.remove(node)
+        node = nt.nodes.new(bl_idname)
+        node.name = name
+    return node
+
+
+def _ensure_link(nt, from_socket, to_socket):
+    """Idempotently ensure a link from `from_socket` to `to_socket`. If the
+    destination is already driven by exactly this source, do nothing."""
+    for ln in to_socket.links:
+        if ln.from_socket == from_socket:
+            return
+    nt.links.new(from_socket, to_socket)
 
 
 # ---------------------------------------------------------------------------
@@ -186,50 +219,145 @@ def _build_silver(mat):
 
 
 def _build_radiator(mat):
-    """HB2_Radiator -- light-grey radiator, minor polish only.
+    """HB2_Radiator -- clean white/silver radiator panel.
 
-    This material uses direct (unlinked) Base Color / Roughness, so we set the
-    BSDF inputs straight.
+    This material uses direct (unlinked) Base Color / Roughness (the Wave
+    Texture -> Color Ramp -> Bump chain only drives the grooved Normal, not the
+    color), so we set the BSDF colour/rough inputs straight. References (JAXA
+    art) show the radiator reading bright white-silver, so we lift the base
+    colour toward white and back off the metallic a touch (a real white thermal
+    radiator is a bright dielectric coating, not a polished mirror).
     """
     bsdf = _principled(mat)
     if bsdf is None:
         return
 
-    _set_input(bsdf, "Base Color", (0.78, 0.80, 0.82, 1.0))
-    _set_input(bsdf, "Metallic", 0.85)
-    _set_input(bsdf, "Roughness", 0.18)
+    _set_input(bsdf, "Base Color", (0.90, 0.91, 0.93, 1.0))  # clean white-silver
+    _set_input(bsdf, "Metallic", 0.6)
+    _set_input(bsdf, "Roughness", 0.22)
     _set_input(bsdf, "Specular IOR Level", 0.5)
+
+
+def _build_ionglow(mat):
+    """HB2_IonGlow -- soft, contained CYAN-BLUE ion-engine-face glow.
+
+    GET-OR-CREATE: this material may already exist in the .blend (an Emission ->
+    Output graph, color ~[0.2,0.45,1.0] strength 14 -- too hot, clips to white
+    through AgX). It is NOT authored by any geometry script, so we author it here
+    for reproducibility. If the Emission/Output graph is missing (from-scratch
+    rebuild) we create it; otherwise we reuse the existing nodes by name.
+
+    Look (matched to JAXA refs `hayabusa2 image 9/10.jpg`, `hayabusa image
+    11.jpg`): saturated cyan-blue, soft -- a bright core that falls off to a
+    dim edge so each disk reads as a *glow*, not a flat hot disc. We drive the
+    Emission Strength with a radial falloff built from the Generated texture
+    coordinate (bounding-box normalized 0..1 per object, so it centres correctly
+    on all four identical HB2_IonGlow0-3 disks without needing UVs).
+    """
+    # --- core tunable values ---
+    GLOW_COLOR   = (0.15, 0.45, 1.0, 1.0)  # saturated cyan-blue
+    CORE_STRENGTH = 5.5                    # bright core (was 14 -> white blowout)
+    EDGE_STRENGTH = 1.6                    # soft dim edge of the disk
+
+    mat.use_nodes = True
+    nt = mat.node_tree
+
+    # If this is a from-scratch material, bpy.data.materials.new(use_nodes=True)
+    # seeds a default Principled BSDF we don't want. Drop any stray Principled so
+    # the authored graph is clean and identical whether created or reused.
+    for stray in [n for n in nt.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled"]:
+        nt.nodes.remove(stray)
+
+    # Output + Emission (get-or-create so a from-scratch rebuild works).
+    out = _get_or_make_node(nt, "Material Output", "ShaderNodeOutputMaterial")
+    emis = _get_or_make_node(nt, "Emission", "ShaderNodeEmission")
+    emis.inputs["Color"].default_value = GLOW_COLOR
+
+    # --- soft radial falloff sub-graph driving Emission Strength ---
+    # Generated coords -> recentre to [-0.5,0.5] in XY -> radial distance ->
+    # Color Ramp shaping core->edge -> map to [EDGE..CORE] strength.
+    texco = _get_or_make_node(nt, "IonGlow TexCoord", "ShaderNodeTexCoord")
+
+    # Subtract 0.5 from the Generated vector so the disk centre sits at origin.
+    sub = _get_or_make_node(nt, "IonGlow Center", "ShaderNodeVectorMath")
+    sub.operation = 'SUBTRACT'
+    sub.inputs[1].default_value = (0.5, 0.5, 0.5)
+
+    # Vector length -> radial distance from centre (0 at core, ~0.5 at rim).
+    length = _get_or_make_node(nt, "IonGlow Radius", "ShaderNodeVectorMath")
+    length.operation = 'LENGTH'
+
+    # Shape the radius into a soft 1->0 core->edge mask via a ColorRamp.
+    ramp = _get_or_make_node(nt, "IonGlow Falloff", "ShaderNodeValToRGB")
+    cr = ramp.color_ramp
+    cr.interpolation = 'EASE'  # smooth, soft shoulder
+    # Two-stop soft falloff: bright out to ~0.18 radius, fading to dark by ~0.5.
+    _set_ramp_stops(cr, [
+        (0.18, (1.0, 1.0, 1.0, 1.0)),
+        (0.50, (0.0, 0.0, 0.0, 1.0)),
+    ])
+
+    # Map mask [0..1] -> Emission Strength [EDGE..CORE].
+    strength = _get_or_make_node(nt, "IonGlow Strength", "ShaderNodeMapRange")
+    strength.inputs["From Min"].default_value = 0.0
+    strength.inputs["From Max"].default_value = 1.0
+    strength.inputs["To Min"].default_value = EDGE_STRENGTH
+    strength.inputs["To Max"].default_value = CORE_STRENGTH
+
+    # Wire it up (idempotent).
+    _ensure_link(nt, texco.outputs["Generated"], sub.inputs[0])
+    _ensure_link(nt, sub.outputs["Vector"], length.inputs[0])
+    _ensure_link(nt, length.outputs["Value"], ramp.inputs["Fac"])
+    _ensure_link(nt, ramp.outputs["Color"], strength.inputs["Value"])
+    _ensure_link(nt, strength.outputs["Result"], emis.inputs["Strength"])
+    _ensure_link(nt, emis.outputs["Emission"], out.inputs["Surface"])
 
 
 # ---------------------------------------------------------------------------
 # public entry point
 # ---------------------------------------------------------------------------
 
-_BUILDERS = {
-    "HB2_Gold_MLI":   _build_gold,
-    "HB2_Black_MLI":  _build_black,
-    "HB2_Silver_MLI": _build_silver,
-    "HB2_Radiator":   _build_radiator,
-}
+# Materials we author. The bool flag = "create the material if it is missing"
+# (only HB2_IonGlow is get-or-create; the MLI/radiator mats must already exist
+# and are tuned in place).
+_BUILDERS = (
+    ("HB2_Gold_MLI",   _build_gold,     False),
+    ("HB2_Black_MLI",  _build_black,    False),
+    ("HB2_Silver_MLI", _build_silver,   False),
+    ("HB2_Radiator",   _build_radiator, False),
+    ("HB2_IonGlow",    _build_ionglow,  True),
+)
 
 
 def build():
-    """Idempotently retune the four owned spacecraft-skin materials in place.
+    """Idempotently author the owned spacecraft-skin + ion-glow materials.
 
-    No file IO, no render, no MCP. Edits existing node trees only.
+    The MLI/radiator materials are tuned in place (skipped with a warning if
+    absent). HB2_IonGlow is get-or-create: created if missing so a from-scratch
+    rebuild still works. No file IO, no render, no MCP.
     """
     touched = []
-    for name, fn in _BUILDERS.items():
+    for name, fn, create_if_missing in _BUILDERS:
         mat = bpy.data.materials.get(name)
         if mat is None:
-            print(f"[06_materials] WARNING: material '{name}' not found -- skipped")
-            continue
+            if create_if_missing:
+                mat = bpy.data.materials.new(name)
+                mat.use_nodes = True
+                print(f"[06_materials] created missing material '{name}'")
+            else:
+                print(f"[06_materials] WARNING: material '{name}' not found -- skipped")
+                continue
         if mat.node_tree is None:
-            print(f"[06_materials] WARNING: material '{name}' has no node tree -- skipped")
-            continue
+            # get-or-create builders author their own graph; only skip the
+            # in-place tuners that genuinely have nothing to edit.
+            if create_if_missing:
+                mat.use_nodes = True
+            else:
+                print(f"[06_materials] WARNING: material '{name}' has no node tree -- skipped")
+                continue
         fn(mat)
         touched.append(name)
-    print(f"[06_materials] build() done. Tuned: {', '.join(touched)}")
+    print(f"[06_materials] build() done. Authored: {', '.join(touched)}")
     return touched
 
 
@@ -241,6 +369,25 @@ if __name__ == "__main__":
     import sys
 
     build()
+
+    # --- verify the ion-glow emission programmatically (the test render may not
+    # show the glow if the engines are hidden, so confirm the values here) ---
+    _ion = bpy.data.materials.get("HB2_IonGlow")
+    if _ion and _ion.node_tree:
+        _emis = _ion.node_tree.nodes.get("Emission")
+        if _emis:
+            _col = tuple(round(float(x), 4) for x in _emis.inputs["Color"].default_value)
+            _str_in = _emis.inputs["Strength"]
+            if _str_in.is_linked:
+                # Strength is driven by the radial falloff (Map Range To Min..Max).
+                _mr = _ion.node_tree.nodes.get("IonGlow Strength")
+                _edge = round(float(_mr.inputs["To Min"].default_value), 4) if _mr else "?"
+                _core = round(float(_mr.inputs["To Max"].default_value), 4) if _mr else "?"
+                print(f"[06_materials] IonGlow emission color={_col} "
+                      f"strength=radial[edge={_edge}..core={_core}]")
+            else:
+                print(f"[06_materials] IonGlow emission color={_col} "
+                      f"strength={round(float(_str_in.default_value), 4)}")
 
     # Parse args after the `--` separator.
     argv = sys.argv

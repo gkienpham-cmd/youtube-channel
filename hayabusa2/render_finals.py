@@ -13,11 +13,11 @@ Optional flags after the scene name:
 Scene = ONE master scene reused via toggles (lights / world / collection+object
 visibility). Camera rig is shared and left untouched.
 """
-import bpy, sys
+import bpy, sys, math
 
 RENDER_DIR = "/Users/kienpham/Documents/youtube-channel/hayabusa2/renders"
 STUDIO_LIGHTS = ["HB2_Studio_Key", "HB2_Studio_Fill", "HB2_Studio_Rim"]
-SUNS          = ["HB2_Sun", "HB2_FillSun"]
+SUNS          = ["HB2_Sun", "HB2_FillSun", "HB2_RimSun"]
 ION_GLOW      = ["HB2_IonGlow0", "HB2_IonGlow1", "HB2_IonGlow2", "HB2_IonGlow3"]
 EARTH_P       = ("HB2_Earth",)                                       # surface + cloud + atmo shells
 RYUGU_SURF_P  = ("HB2_RyuguSurface", "HB2_Boulder")                  # close descent surface (anim use)
@@ -31,10 +31,12 @@ RYUGU_BODY_LOC   = (6.0, 34.0, -7.0)
 RYUGU_BODY_SCALE = 0.125
 
 # Per-scene camera rig (HB2_PreviewCam TRACK_TO HB2_AimRyugu).
+# Craft was rotated +90deg about Z (panels now along world-Y), so the hero views look more
+# down the X axis to keep the wings spread horizontally rather than foreshortened.
 CAM_RIG = {
-    "studio": dict(loc=(7.5, -8.5, 3.3), aim=(0.0, 0.0, -1.0), lens=44),
-    "cruise": dict(loc=(9.0, -10.5, 4.0), aim=(-1.5, 8.0, 1.0), lens=35),
-    "ryugu":  dict(loc=(9.0, -10.5, 4.0), aim=(1.5, 12.0, -1.0), lens=35),
+    "studio": dict(loc=(9.0, -4.5, 4.0), aim=(0.0, 0.0, 0.2), lens=48),
+    "cruise": dict(loc=(8.6, -5.2, 1.7), aim=(-1.0, 5.0, 0.7), lens=40),
+    "ryugu":  dict(loc=(8.0, -8.8, 3.0), aim=(1.3, 10.0, -0.5), lens=35),
 }
 
 
@@ -97,6 +99,35 @@ def _place_ryugu_body():
         b.scale = (RYUGU_BODY_SCALE, RYUGU_BODY_SCALE, RYUGU_BODY_SCALE)
 
 
+def _ensure_sun(name, energy, color, rot=None, angle_deg=None):
+    """Get-or-create a SUN. Rotation is set only on creation (preserves hand-set key/fill angles)."""
+    o = bpy.data.objects.get(name)
+    created = o is None
+    if created:
+        d = bpy.data.lights.new(name + "Data", "SUN")
+        o = bpy.data.objects.new(name, d)
+        bpy.context.scene.collection.objects.link(o)
+    o.data.energy = energy
+    o.data.color = color
+    if angle_deg is not None:
+        o.data.angle = math.radians(angle_deg)
+    if rot is not None and created:
+        o.rotation_euler = rot
+    o.hide_render = False
+    o.hide_viewport = False
+    return o
+
+
+def _setup_flyby_lights():
+    """Deep-space lighting for cruise/ryugu: hard key + cool fill (lifts the gold body so detail
+    reads) + cool-blue rim (separates the craft from black) — moody-but-legible, matching the JAXA
+    Hayabusa2 ion-engine renders. Fill was 0.3 (too dark); raised + a new rim sun added."""
+    _ensure_sun("HB2_Sun",     5.5, (1.0, 0.97, 0.92))                       # hard key (keep its angle)
+    _ensure_sun("HB2_FillSun", 1.8, (0.42, 0.58, 1.0), angle_deg=10.0)       # cool fill, raised from 0.3
+    _ensure_sun("HB2_RimSun",  3.2, (0.50, 0.70, 1.0),
+                rot=(math.radians(-58), 0.0, math.radians(132)), angle_deg=3.0)  # cool-blue back rim
+
+
 def setup_scene(name):
     """Toggle camera / lights / world / visibility for one of: studio | cruise | ryugu.
 
@@ -119,6 +150,7 @@ def setup_scene(name):
         _set_prefix_hide(RYUGU_BODY_P, True)           # asteroid out of the studio shot
     elif name == "cruise":
         sc.world = starfield
+        _setup_flyby_lights()
         for l in STUDIO_LIGHTS: _hide_obj(l, True)
         for l in SUNS:          _hide_obj(l, False)
         for o in ION_GLOW:      _hide_obj(o, False)    # ion engines firing
@@ -127,6 +159,7 @@ def setup_scene(name):
         _set_prefix_hide(RYUGU_BODY_P, True)           # no asteroid in deep-space cruise
     elif name == "ryugu":
         sc.world = starfield
+        _setup_flyby_lights()
         for l in STUDIO_LIGHTS: _hide_obj(l, True)
         for l in SUNS:          _hide_obj(l, False)
         for o in ION_GLOW:      _hide_obj(o, True)     # ion off during descent

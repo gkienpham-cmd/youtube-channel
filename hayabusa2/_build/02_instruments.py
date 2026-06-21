@@ -1,32 +1,35 @@
 """
-02_instruments.py  --  Hayabusa2 bus detailing pass (Blender 5.1 / Eevee Next)
+02_instruments.py  --  RETIRED (deprecated no-op).  Blender 5.1 / Eevee Next.
 
-Adds maximum-density instrument / greeble detail and a BALANCED gold + black
-MLI patchwork to the photorealistic JAXA Hayabusa2 bus, matching reference
-images 4 (museum model materials), 5 (JAXA instrument-placement diagram) and
-6 (Ikeshita render -- the locked balanced gold<->black look).
+================================  STATUS  ================================
+This module is DEPRECATED.  build() does NOTHING.
 
-DESIGN / SAFETY NOTES
-  * build() is fully idempotent: it first deletes every object whose name starts
-    with a prefix THIS script owns, purges orphan meshes, then recreates.
-  * It NEVER opens/saves a file, never renders, and never touches Blender MCP.
-  * It does NOT destructively rebuild shared materials.  Shared MLI / metal
-    materials are referenced and assigned only.  A single NEW material
-    (HB2_Radiator) is created if missing (and its nodes rebuilt deterministically).
-  * It does NOT modify solar arrays (HB2_Solar*), the World shader, or HB2_Earth*.
-  * Existing instruments are NOT deleted.  The only existing objects modified are
-    the two HGA faces (HB2_HGA_X_face, HB2_HGA_Ka_face): their mesh is replaced
-    with a flat octagon (Hayabusa2 phased-array signature) of the same
-    size/position, deterministically.
+All of the instrument / greeble / MLI-patchwork / radiator / NIRS3 / TIR /
+bolt-ring / flat-octagon-HGA detail this pass used to add has been FOLDED INTO
+02_craft.py, which owns the spacecraft body and authors that detail on the
+CORRECT faces for the live bus convention (HX=0.50, HY=0.80, HZ=0.625).
+=========================================================================
 
-PREFIXES OWNED (safe to delete + recreate every run):
-    HB2_MLIplate_   HB2_Radiator_   HB2_NIRS3_   HB2_TIR_
-    HB2_GreebleB_   HB2_Seam_       HB2_Boltring_
+WHY IT WAS RETIRED (it was mutually destructive with 02_craft.py):
+  * Shared owned object prefixes with 02_craft.py (HB2_MLIplate_, HB2_Seam_,
+    HB2_NIRS3_, HB2_TIR_, HB2_GreebleB_, HB2_Boltring_, HB2_Radiator*) -> the two
+    scripts fought over the same names.
+  * _purge_owned() also deleted EVERY 0-user mesh in the whole file -- a
+    dangerous global side effect.
+  * It used a BACKWARDS axis convention (BX=0.80, BY=0.50 -- the 1.6 axis
+    swapped) -> detail painted on the WRONG faces of the live 1.0x1.6x1.25 bus.
+  * _ensure_radiator_material() re-authored the HB2_Radiator material owned by
+    the materials agent (06_materials.py).
 
-Run headless:
-  Blender --background work_instruments.blend --python 02_instruments.py
-Optional cheap test render (scaffolding lives only in __main__):
-  ... --python 02_instruments.py -- --shot /path/out.png
+The integrator runs 02_craft.build() then 02_instruments.build().  Making this a
+no-op guarantees that sequence is safe (no double-purge, no wrong-face detail,
+no material re-authoring).  The old worker functions below are kept for
+reference only; build() never calls them, and the two genuinely-destructive
+helpers (_purge_owned, _ensure_radiator_material) have been neutered to hard
+no-ops / by-name lookups so even a stray direct call cannot corrupt the scene.
+
+Run headless (does nothing but print a deprecation note):
+  Blender --background work.blend --python 02_instruments.py
 """
 
 import bpy
@@ -193,60 +196,25 @@ def _torus(name, center, major_r, minor_r, coll, parent, mat=None,
 # Idempotency: nuke owned objects + orphan meshes
 # ---------------------------------------------------------------------------
 def _purge_owned():
-    to_del = [o for o in bpy.data.objects
-              if any(o.name.startswith(p) for p in OWNED_PREFIXES)]
-    for o in to_del:
-        me = o.data if o.type == 'MESH' else None
-        bpy.data.objects.remove(o, do_unlink=True)
-    # purge orphan meshes (no users) -- only those clearly ours or dangling
-    for me in list(bpy.data.meshes):
-        if me.users == 0:
-            bpy.data.meshes.remove(me)
+    # DEPRECATED + NEUTERED.  This used to delete every object matching the
+    # OWNED_PREFIXES *and then sweep EVERY 0-user mesh in the whole file* -- a
+    # dangerous global side effect that collided with 02_craft.py (which now owns
+    # all of these prefixes).  build() is a retired no-op and never calls this.
+    # Kept as a hard no-op so that even a direct call cannot wipe scene data.
+    return
 
 
 # ---------------------------------------------------------------------------
 # Radiator material (the ONLY new material this script creates)
 # ---------------------------------------------------------------------------
 def _ensure_radiator_material():
-    name = "HB2_Radiator"
-    m = bpy.data.materials.get(name)
-    if m is None:
-        m = bpy.data.materials.new(name)
-    m.use_nodes = True
-    nt = m.node_tree
-    nt.nodes.clear()
-
-    out = nt.nodes.new("ShaderNodeOutputMaterial")
-    out.location = (520, 0)
-    bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
-    bsdf.location = (220, 0)
-    # Light grey radiator (OSR / silver-teflon look), low roughness, metallic-ish
-    bsdf.inputs["Base Color"].default_value = (0.78, 0.80, 0.82, 1.0)
-    bsdf.inputs["Metallic"].default_value = 0.85
-    bsdf.inputs["Roughness"].default_value = 0.18
-    # Fine slat striping via object-space coordinate -> wave -> slight bump
-    tc = nt.nodes.new("ShaderNodeTexCoord")
-    tc.location = (-680, -200)
-    wave = nt.nodes.new("ShaderNodeTexWave")
-    wave.location = (-440, -200)
-    wave.wave_type = 'BANDS'
-    wave.inputs["Scale"].default_value = 18.0
-    wave.inputs["Distortion"].default_value = 0.0
-    ramp = nt.nodes.new("ShaderNodeValToRGB")
-    ramp.location = (-220, -260)
-    ramp.color_ramp.elements[0].position = 0.42
-    ramp.color_ramp.elements[1].position = 0.58
-    bump = nt.nodes.new("ShaderNodeBump")
-    bump.location = (0, -260)
-    bump.inputs["Strength"].default_value = 0.25
-    bump.inputs["Distance"].default_value = 0.003
-
-    nt.links.new(tc.outputs["Object"], wave.inputs["Vector"])
-    nt.links.new(wave.outputs["Fac"], ramp.inputs["Fac"])
-    nt.links.new(ramp.outputs["Color"], bump.inputs["Height"])
-    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
-    nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
-    return m
+    # DEPRECATED + NEUTERED.  HB2_Radiator is authored exclusively by the
+    # materials agent (06_materials.py).  This used to re-author its node tree,
+    # which clobbered the materials agent's work.  It now ONLY references the
+    # material by name (never creates/edits it) -- honouring the assign-by-name
+    # rule.  Returns the existing material, or None if absent (callers, if any,
+    # must tolerate None; build() is a no-op and never calls this).
+    return bpy.data.materials.get("HB2_Radiator")
 
 
 # ---------------------------------------------------------------------------
@@ -715,51 +683,48 @@ def _refine_hgas():
 
 
 # ---------------------------------------------------------------------------
-# Master build (idempotent, NO file/render/MCP)
+# Master build  --  RETIRED (deprecated no-op)
 # ---------------------------------------------------------------------------
+#
+# !!  THIS MODULE IS DEPRECATED AND INTENTIONALLY DOES NOTHING.  !!
+#
+# All of the instrument / greeble / MLI-patchwork / radiator / NIRS3 / TIR /
+# bolt-ring / flat-octagon-HGA detail that this pass used to add has been FOLDED
+# INTO 02_craft.py (which owns the spacecraft body and authors that detail on the
+# CORRECT faces for the live bus convention HX=0.50, HY=0.80, HZ=0.625).
+#
+# Why it was retired (it was mutually destructive with 02_craft.py):
+#   * It shared owned object prefixes with 02_craft.py (HB2_MLIplate_, HB2_Seam_,
+#     HB2_NIRS3_, HB2_TIR_, HB2_GreebleB_, HB2_Boltring_, HB2_Radiator*), so the
+#     two scripts overwrote / fought over the same names.
+#   * Its _purge_owned() additionally deleted EVERY 0-user mesh in the whole
+#     file -- a dangerous global side effect that could wipe unrelated data.
+#   * It used a BACKWARDS axis convention (BX=0.80, BY=0.50 -- the 1.6 axis
+#     swapped), so it painted detail on the WRONG faces of the live 1.0x1.6x1.25
+#     bus.
+#   * It re-authored the HB2_Radiator material (_ensure_radiator_material()),
+#     which is owned by the materials agent (06_materials.py).
+#
+# The integrator runs 02_craft.build() then 02_instruments.build() in that order.
+# Making this a no-op guarantees that sequence is safe: craft produces the
+# complete, correct craft and instruments does NOT touch it (no double-purge, no
+# wrong-face detail, no material re-authoring).
+#
+# The old implementation functions are kept below for reference only; build()
+# never calls them.  If you ever revive this module, you MUST: (1) give it
+# UNIQUE owned prefixes that 02_craft.py does not emit, (2) scope _purge_owned()
+# to ONLY those unique prefixes (never a global 0-user mesh sweep), (3) use the
+# CORRECT convention BX=0.50 / BY=0.80, and (4) DELETE _ensure_radiator_material()
+# so HB2_Radiator is only ever referenced by name.
+#
 def build():
-    root = bpy.data.objects.get(ROOT_NAME)
-    if root is None:
-        raise RuntimeError(f"'{ROOT_NAME}' not found -- wrong .blend?")
-
-    # verify shared materials exist (we only reference them)
-    for mn in SHARED_MATS:
-        if bpy.data.materials.get(mn) is None:
-            print(f"  WARNING: shared material '{mn}' missing; assignments using it will fail.")
-
-    # 0. idempotent cleanup of everything we own
-    _purge_owned()
-
-    # collections we link into (all already exist; helper creates if not)
-    c_bus = _get_collection("HB2_Bus")
-    c_instr = _get_collection("HB2_Instruments")
-    c_details = _get_collection("HB2_Details")
-
-    # NEW material (only one we create)
-    rad_mat = _ensure_radiator_material()
-
-    counts = {}
-    counts["mli_plates"] = _build_mli_patchwork(c_bus, root)
-    counts["quilt_seams"] = _build_quilt_seams(c_bus, root)
-    counts["radiator_parts"] = _build_radiators(c_bus, root, rad_mat)
-    counts["new_instrument_parts"] = _build_nirs3_tir(c_instr, root)
-    counts["greebles"] = _build_greebles(c_details, root, rad_mat)
-    counts["bolt_rings"] = _build_boltrings(c_details, root)
-    hga_notes = _refine_hgas()
-
-    # report
     print("=" * 60)
-    print("02_instruments.build() complete")
-    for k, v in counts.items():
-        print(f"  {k}: {v}")
-    print("  HGA refinement:")
-    for nline in hga_notes:
-        print(f"    - {nline}")
-    print(f"  HB2_Radiator material: {'reused' if rad_mat else 'created'}")
-    total = sum(counts.values())
-    print(f"  total objects added by this pass: {total}")
+    print("02_instruments.build(): RETIRED no-op.")
+    print("  All instrument/greeble/MLI/radiator detail now lives in 02_craft.py")
+    print("  (authored on the correct faces).  This pass intentionally does")
+    print("  nothing -- no objects created, no purge, no material edits.")
     print("=" * 60)
-    return counts
+    return {}
 
 
 # ---------------------------------------------------------------------------
