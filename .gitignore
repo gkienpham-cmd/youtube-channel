@@ -4,3 +4,7 @@
 
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
+
+# Blender auto-save backups
+*.blend1
+*.blend2
