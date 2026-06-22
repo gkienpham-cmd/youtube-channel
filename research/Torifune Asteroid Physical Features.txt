@@ -1,0 +1,121 @@
+﻿Procedural Generation Specification for Asteroid (98943) Torifune
+Executive Summary
+The near-Earth asteroid (98943) Torifune, provisionally designated 2001 CC21, serves as the primary flyby target for the Japan Aerospace Exploration Agency's (JAXA) Hayabusa2 Extended Mission (Hayabusa2#) scheduled for July 5, 20261. Translating the physical, kinetic, and optical properties of this celestial body into a physically based 3D rendering pipeline requires synthesizing comprehensive astronomical data—ranging from thermophysical models to spectro-photometric observations.
+The analytical consensus indicates that Torifune is a relatively bright, highly elongated, stony S-complex (Sq-type) asteroid with a broadly homogeneous surface composition3. It exhibits a stable, prograde rotation with a nearly upright orientation relative to the ecliptic plane4. The following specification details the exact geometric parameters, topographical displacements, material shading properties, and environmental encounter dynamics required to generate a scientifically accurate, procedural 3D model of Torifune suitable for a programmatic environment.
+Macro-Geometry and Volumetric Properties
+The foundation of the 3D base mesh relies on shape models derived from multi-epoch lightcurve inversions, stellar occultations, and infrared thermophysical modeling. The aggregate data reveals an object that deviates profoundly from a spherical primitive.
+Dimensions and Structural Morphology
+Measurements of Torifune’s volume-equivalent diameter (  ) present a range of estimations due to uncertainties in absolute magnitude. Ground-based telescopic and Spitzer space telescope data converge on an equivalent diameter of    meters to    meters3. However, thermophysical modeling utilizing the NEOWISE dataset suggests a potentially smaller volume-equivalent sphere diameter of    meters6. Assuming a nominal diameter of roughly    meters, the total mass of the asteroid is estimated at    kilograms, consistent with the density of a porous rubble-pile structure8.
+The asteroid's geometry is highly elongated. Photometric lightcurves show extreme brightness variations up to 0.96 magnitudes, indicating an equatorial axis ratio (  ) of approximately 0.41, with occultation data suggesting an even more severe elongation ratio of   3. The semi-axes of the equivalent ellipsoid are defined as    km,    km, and    km4. This projects a primary bounding box of roughly    meters3. The extreme elongation heavily implies that Torifune may possess a contact binary morphology3. In a 3D modeling context, this dictates that the base mesh should not be a simple stretched sphere, but rather a dual-lobe structure joined by a central concavity or "neck," similar to the comet 67P/Churyumov–Gerasimenko.
+Table 1: Geometric Constraints for Base Mesh Generation
+
+
+Parameter
+	Observed Value
+	Implication for 3D Mesh
+	Equivalent Diameter (  )
+	  
+
+[cite: 3, 4]
+	Baseline scaling factor for volume.
+	Semi-major axes (  )
+	420m, 160m, 170m4
+	Non-uniform scale factors (  ).
+	Equatorial axes ratio (  )
+	  
+ to   
+[cite: 3, 7]
+	Defines the severity of the primary elongation.
+	Estimated Mass
+	  
+ kg8
+	Impacts physics simulations (e.g., gravity fields).
+	Structural Classification
+	Convex Ellipsoid / Contact Binary3
+	Requires central boolean depression or dual-lobe generation.
+	Surface Topography and Regolith Displacement
+The surface topology of Torifune is shaped by its mineralogy, lack of strong gravitational retention, and continuous exposure to the space environment.
+Spectro-photometric observations obtained across complete rotational phases confirm a lack of detectable large-scale heterogeneity4. This indicates that the 3D displacement map should be procedurally uniform, avoiding isolated regions of distinct mineralogy or singular, massive impact basins. Thermophysical models estimate a crater fraction of approximately 0.514, suggesting a heavily pockmarked but broadly consistent surface7.
+As an object under one kilometer in diameter, Torifune's low surface gravity prevents the retention of fine dust, leading to a surface dominated by coarse regolith and rocky boulders, characteristic of S-type near-Earth objects like Itokawa9. The spectral data further indicate moderate space weathering, meaning the surface features are physically mature3. Within a procedural displacement pipeline, this translates to utilizing low-frequency noise algorithms (such as Musgrave or Perlin) to generate shallow, highly degraded crater rims, overlaid with high-frequency cellular noise to scatter angular boulders ranging from one to twenty meters in diameter across the regolith pools.
+Material Shading and Photometric Properties
+The material shader parameters must precisely reflect the spectro-photometric data associated with an Sq-type silicate asteroid to achieve photorealism.
+Albedo and Reflectance
+Torifune is unusually reflective for a near-Earth object. Although previously misclassified as a calcium-aluminum-rich L-type asteroid, extensive spectroscopic observation confirms it is an Sq-type object2. Its surface consists primarily of silicate minerals—approximately 60% olivine and 40% pyroxene—correlating closely with LL/L ordinary chondrite meteorites3.
+This composition yields a geometric albedo ranging from    to   , with some thermophysical models suggesting absolute limits up to 0.405 under specific phase angles6. For a physically based rendering (PBR) shader, the base color luminosity must be strictly calibrated to reflect approximately 22% of incident light, completely avoiding the dark, carbonaceous tones typical of C-type asteroids like Ryugu3. Furthermore, as a heavily weathered silicate rock, the material lacks macroscopic metallic reflections, requiring a specular value near zero and a roughness value approaching 1.0 to account for light scattering within the porous regolith7.
+Colorimetry and RGB Translation
+S-complex asteroids exhibit a moderately steep reddish slope in the visible to near-infrared spectrum14. Ground-based telescopic observations using broadband Sloan Digital Sky Survey (SDSS) filters provide precise color indices for Torifune:    mag,    mag, and    mag4.
+Because the solar    index is approximately 0.44, Torifune's elevated value of 0.663 indicates a distinctly redder hue than raw sunlight. To translate these photometric values into a Base Color within a 3D application, the shader should deploy a warm, brownish-red or khaki base (e.g., sRGB hex values ranging from #8B7D72 to #9A8B7D). This base color should be modulated by high-frequency procedural noise to represent localized albedo variations caused by fresh impact exposures versus space-weathered rock.
+Table 2: PBR Shader Parameters
+
+
+Shader Property
+	Target Value / Input
+	Astronomical Justification
+	Base Color (Albedo)
+	~0.22 Luminance
+	Geometric albedo of   6.
+	Base Hue
+	Warm Grey / Brownish-Red
+	Sq-type taxonomy;   4.
+	Roughness
+	0.85 - 0.95
+	Extreme surface roughness; crater fraction 0.5147.
+	Specular / Metallic
+	0.02 / 0.00
+	Silicate rock lacks metallic reflection; highly diffuse13.
+	Kinematics and Scene Animation
+The rotational dynamics of Torifune dictate the animation timeline and the progression of terminator lines across the surface mesh.
+The asteroid is a stable, fast rotator, completing a full revolution every    hours3. Telescopic monitoring shows no evidence of a tumbling mode or non-principal axis rotation, permitting a simple, single-axis rotation constraint in the 3D scene16.
+Torifune exhibits a prograde rotation with a highly constrained pole orientation. Its ecliptic longitude (  ) is    and its ecliptic latitude (  ) is    degrees4. A latitude approaching 90 degrees indicates that the asteroid's local Z-axis is nearly perpendicular to the ecliptic plane, resulting in a negligible axial tilt (obliquity) of   3. Consequently, the primary light source must illuminate the asteroid almost exactly along its equatorial plane, producing stark, pole-to-pole terminator lines that advance rapidly across the 5.02-hour rotation cycle.
+Encounter Dynamics and Illumination Geometry
+Simulating the Hayabusa2# flyby requires configuring the virtual camera and lighting to match the precise orbital mechanics of the July 5, 2026 encounter1.
+Solar Irradiance
+At the time of the closest approach, Torifune will be near its perihelion at a distance of 0.81 Astronomical Units (AU) from the Sun2. According to the inverse-square law of light, solar irradiance at this distance is significantly higher than at Earth orbit (  ). The directional light source simulating the Sun must be scaled to approximately 1.52 times the standard solar intensity. The apparent angular size of the Sun will also increase slightly to roughly   , resulting in marginally softer shadow penumbras cast by surface boulders.
+Camera Animation and Trajectory
+The flyby involves extreme relative velocities. The spacecraft will streak past the asteroid at   , with a targeted closest approach distance between 1 and 10 kilometers from the asteroid's center to mitigate collision risks2.
+Hayabusa2# was engineered for rendezvous operations rather than high-speed flybys; thus, its Optical Navigation Camera (ONC-T) is fixed to the main spacecraft body1. Rapidly altering the spacecraft's attitude to track the asteroid at 5.25 km/s is mechanically restrictive. Therefore, the mission profile relies on high-precision navigation to maintain a fixed orientation, capturing the asteroid as it traverses the field of view2. To accurately replicate this in a 3D environment, the virtual camera must be animated along a linear spline at a constant relative speed of 5.25 km/s, passing the asteroid mesh at a minimum offset of 1 to 10 kilometers, utilizing zero gimbal tracking to emulate the fixed-attitude constraints of the probe.
+Table 3: Scene Animation and Encounter Variables
+
+
+Scene Parameter
+	Value
+	3D Implementation Requirement
+	Rotation Period
+	5.0215 hours5
+	Constant Z-axis rotation rate constraint.
+	Axial Tilt
+	5° relative to orbit3
+	Base rotation of the local coordinate system.
+	Solar Distance
+	0.81 AU2
+	Direct Light Strength multiplier:   .
+	Encounter Velocity
+	5.25 km/s2
+	Camera translation speed along the trajectory path.
+	Closest Approach
+	1 km to 10 km2
+	Perpendicular offset from Camera spline to Mesh origin.
+	Camera Tracking
+	Fixed Orientation2
+	No "Track To" constraints; static camera rotation.
+	Works cited
+1. Flyby of asteroid Torifune on July 5, 2026 | ISAS, https://www.isas.jaxa.jp/en/topics/004151.html
+2. Overview of Hayabusa2 extended mission's flyby of Near-Earth Asteroid (98943) Torifune - arXiv, https://arxiv.org/pdf/2604.08832
+3. 98943 Torifune - Wikipedia, https://en.wikipedia.org/wiki/98943_Torifune
+4. Characterization of of (98943) 2001 CC$_{21}$, the target of Hayabusa2 - arXiv, https://arxiv.org/abs/2501.15644
+5. Characterization of (98943) 2001 CC21, the Target of Hayabusa2# - Astrobiology, https://astrobiology.com/2025/02/characterization-of-98943-2001-cc21-the-target-of-hayabusa2.html
+6. Spectral Type and Geometric Albedo of (98943) 2001 CC21, the Hayabusa2# Mission Target | Request PDF - ResearchGate, https://www.researchgate.net/publication/371534974_Spectral_Type_and_Geometric_Albedo_of_98943_2001_CC21_the_Hayabusa2_Mission_Target
+7. NEOWISE data and Thermophysical Modeling of 98943 Torifune (2001 CC 21 ) - arXiv, https://arxiv.org/html/2512.08181v1
+8. Spectral and photometric characterization of (98943) Torifune in preparation for the Hayabusa2# spacecraft flyby - ResearchGate, https://www.researchgate.net/publication/387964452_Spectral_and_photometric_characterization_of_98943_Torifune_in_preparation_for_the_Hayabusa2_spacecraft_flyby
+9. → NEWSLETTER MAY 2026, https://neo.ssa.esa.int/documents/d/guest/newsletter-may-2026
+10. Asteroid 2001 CC21 Naming Campaign - JAXA, https://www.hayabusa2.jaxa.jp/topics/20240202_CC21Camp/img/NamingCampaignA4_e.pdf
+11. Ground-based characterization of (98943) Torifune 2001 CC21, the target of Hayabusa2# space mission1footnote 11footnote 1Based on observations made with the the Two-meter Twin Telescope (TTT) and the Telescopio Carlos Sanchez (TCS) in the Spanish Observatorio del Teide, Gran Telescopio Canarias (GTC) telescope and the Isaac Newton Telescope ( - arXiv, https://arxiv.org/html/2501.15644v1
+12. Asteroid Explorer Hayabusa2 | Spacecraft | ISAS, https://www.isas.jaxa.jp/en/missions/spacecraft/current/hayabusa2.html
+13. S-type asteroid - Grokipedia, https://grokipedia.com/page/S-type_asteroid
+14. S-type asteroid - Wikipedia, https://en.wikipedia.org/wiki/S-type_asteroid
+15. Asteroid spectral types - Wikipedia, https://en.wikipedia.org/wiki/Asteroid_spectral_types
+16. HAYABUSA2#'S (98943) TORIFUNE FLYBY IN JULY 2026: ITS CONTRIBUTIONS TO PLANETARY DEFENSE. M. Yoshikawa1 (yoshikawa.makoto@jaxa, https://www.hou.usra.edu/meetings/lpsc2025/pdf/1360.pdf
+17. Hayabusa2 Extended Mission: Characterizations of Asteroids 1998 KY26 and 2001 CC21 - Universities Space Research Association, https://www.hou.usra.edu/meetings/acm2023/eposter/2154.pdf
+18. Overview of Hayabusa2 Extended Mission's Flyby of Near-Earth Asteroid (98943) Torifune, https://www.researchgate.net/publication/405153935_Overview_of_Hayabusa2_Extended_Mission's_Flyby_of_Near-Earth_Asteroid_98943_Torifune
+19. Study for realization of proximity flyby of asteroid Torifune in the Hayabusa2# mission, https://www.isas.jaxa.jp/home/research-portal/en/project-research-associate/18_kusumoto/
+20. 2001 CC21 naming campaign We're on the look out for a name for asteroid 2001 CC21! | TOPICS | JAXA Hayabusa2 Project, https://www.hayabusa2.jaxa.jp/en/topics/20231206_CC21Camp_e/

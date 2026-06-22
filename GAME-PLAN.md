@@ -21,7 +21,7 @@ You're not starting a "science channel" or a "history channel." You're starting 
 
 3. **The format's ceiling is enormous. [verified]** Fern grew 1M → 4M subscribers (Apr 2024 → Oct 2025), ~5M by mid-2026. The cinematic-documentary format can scale massively.
 
-4. **Realistic money: ~$5–$15 RPM (your take-home). [verified, medium]** Education content earns roughly **$8–$20 CPM gross**, and you keep ~55%, so **~$5–$15 per 1,000 views in your pocket.** Decent, not life-changing from ads alone — the real money is sponsors/memberships (see §7).
+4. **Realistic money: ~$5–$15 RPM (your take-home). [verified, medium]** Education content earns roughly **$8–$20 CPM gross**, and you keep ~55%, so **~$5–$15 per 1,000 views in your pocket.** Decent, not life-changing from ads alone — the real money is sponsors/memberships (see §8).
 
 **❌ Debunked — do NOT plan around these (all failed 0–3 adversarial verification):**
 
@@ -107,7 +107,7 @@ You wanted to publish 3×/week. **You will — just not all long-form.** This is
 > **1 cinematic long-form per week** (the watch-time + revenue engine)
 > **+ 3–5 vertical shorts per week** (the discovery + subscriber engine)
 
-That's 4–6 publishes a week, satisfies the cadence instinct, *and* protects the quality. The shorts are mostly cut from the long-form (see §6), so they cost hours, not days.
+That's 4–6 publishes a week, satisfies the cadence instinct, *and* protects the quality. The shorts are mostly cut from the long-form (see §7), so they cost hours, not days.
 
 **Launch tactic:** don't debut with one lonely video. **Bank 3 finished long-forms before you launch** and publish all three in week one (then weekly after). A channel with 3 strong videos invites a binge; a channel with 1 looks abandoned.
 
@@ -160,7 +160,7 @@ Your proposed stack is **mostly right.** Here's the stage-by-stage verdict, incl
 | **6. Edit** | **Adobe Premiere** | ✅ Decisively. NOT Claude Code (see below). |
 | **7. Captions** | Premiere auto-captions / Descript, then hand-fix | ✅ Always burn in or enable — huge for retention & accessibility. |
 | **8. Thumbnail** | Photoshop/Photopea + Nano Banana for elements | ✅ |
-| **9. Shorts** | Premiere or CapCut | ✅ See §6. |
+| **9. Shorts** | Premiere or CapCut | ✅ See §7. |
 
 ### ⚠️ The one guardrail that protects your whole channel: fact-checking
 You are building a brand on **teaching people the truth.** AI models — including me — will occasionally state a wrong date, a fabricated "study," or a confident-sounding false detail. **On an educational channel, one viral factual error in the comments can brand you as slop and undo months of trust.** So:
@@ -191,7 +191,20 @@ So: **Claude Code = your writers' room + automation assistant. Premiere = your e
 
 ---
 
-## 6. The multiplatform engine (Shorts / Reels / TikTok)
+## 6. The AI Documentary Engine — a second, fully-promptable pipeline
+
+Alongside the hand-built track above, you have a complete **state-by-state production engine** adapted from the *Fern Animations* "AI Documentary Cloning Engine." It ingests a source-style PDF and walks one input at a time from branding → video ideas → a continuous-narration script → character reference prompts → **Seedance 2.0** animation prompts → 5 thumbnails. Full operating manual: **[AI-DOCUMENTARY-ENGINE.md](docs/AI-DOCUMENTARY-ENGINE.md)**; verbatim source: [GUIDE_full_text.txt](docs/GUIDE_full_text.txt). The channel-DNA it ingests is already in the project folder: `research/SOURCE PDF.pdf`.
+
+**What's directly useful (use as-is):**
+- **The Writing DNA** is the formal spec of the prose style this channel already writes in — precise-date/location cold opens, chained 5–12-word declaratives, deadpan specificity, and a **mandatory cliffhanger** drawn from a fixed set of 5 patterns. It turns the §4 hook discipline into a repeatable checklist.
+- **The state machine + Seedance chapter discipline** — 6–9 beats per ≤15 s clip, anchor/cutaway rhythm, match-cut handoffs between chapters, a verbatim CHARACTER/STYLE LOCK pasted every chapter, and split SFX/Ambient/Music tracks. A rigorous way to storyboard *any* animated sequence and kill visual drift.
+- **The thumbnail system** — 5 standalone variants built from the source channel's thumbnail DNA.
+
+**What to adapt, not copy:** the engine ships with a glossy white/red/black **mannequin** visual language and a crime/geopolitics lane — Fern's *actual* lane, which is darker and more mature than ours. For an awe-not-dread science episode, keep the spine but **hold the register awe-positive** (Hoog's *Pyramids* tone) and **swap the mannequin look** for this channel's own cinematic language: real archival footage + the in-house Blender 3D builds + AI stills. The Seedance path is *AI-generated motion* — a different animation source than footage/Blender; reach for it where generated motion serves the story, never at the cost of the human-voice + verified-facts moat. The full adaptation playbook is §8 of the engine doc.
+
+---
+
+## 7. The multiplatform engine (Shorts / Reels / TikTok)
 
 **Principle: design *native* shorts, don't just chop the long-form. [craft]** A lazy 9:16 crop of a mid-video moment dies. A purpose-built short is a *self-contained* hook→payoff in 30–50s.
 
@@ -203,7 +216,7 @@ So: **Claude Code = your writers' room + automation assistant. Premiere = your e
 
 ---
 
-## 7. Monetization & growth roadmap
+## 8. Monetization & growth roadmap
 
 ### The threshold (YouTube Partner Program)
 **1,000 subscribers + 4,000 valid public watch-hours in the trailing 12 months**, *or* **1,000 subs + 10M valid Shorts views in 90 days.** (A lower 500-sub tier unlocks some fan-funding features earlier in eligible regions.)
@@ -221,7 +234,7 @@ The research **refuted** every "monetized in 6 months" promise. The truth: **it'
 
 ---
 
-## 8. The 90-day launch plan
+## 9. The 90-day launch plan
 
 **Weeks 1–2 — Foundation (no public uploads yet)**
 - Lock the channel name, handle (YT+IG+TikTok), and brand kit (§2).
@@ -258,7 +271,7 @@ The research **refuted** every "monetized in 6 months" promise. The truth: **it'
 
 ---
 
-## 9. Quick-reference templates
+## 10. Quick-reference templates
 
 **The hook skeleton (fill in per video):**
 > [Stunning image] + "[One-sentence curiosity gap with a concrete, staggering detail]."

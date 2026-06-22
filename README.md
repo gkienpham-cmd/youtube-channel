@@ -26,11 +26,15 @@ See **[GAME-PLAN.md](GAME-PLAN.md)** for the full strategy: positioning, packagi
 | File | What it is |
 |---|---|
 | **[GAME-PLAN.md](GAME-PLAN.md)** | The channel blueprint — thesis, niche, packaging, pipeline, monetization, launch plan, and a 12-video topic bank. |
-| **[Episode-01-Hayabusa2-Torifune-SCRIPT.md](Episode-01-Hayabusa2-Torifune-SCRIPT.md)** | Episode 01 narration script with shot-by-shot `[VISUAL]` / `[TEXT]` / `[SFX/MUSIC]` cues. |
-| **[Episode-01-AI-IMAGE-PROMPT-PACK.md](Episode-01-AI-IMAGE-PROMPT-PACK.md)** | A paste-ready AI-image prompt for every 🎨 still, locked to one consistent cinematic grade. |
-| **[Episode-01-FOOTAGE-SOURCING-LIST.md](Episode-01-FOOTAGE-SOURCING-LIST.md)** | A specific, licensable source (+ backup + credit) for every 🎞️ real-footage cue. |
-| **[Hayabusa2 Torifune Flyby Research.txt](Hayabusa2%20Torifune%20Flyby%20Research.txt)** | The fact-checked deep-research dossier behind the script. |
-| `*.m4a` | Voiceover narration recordings (studio and non-studio takes). |
+| **[AI-DOCUMENTARY-ENGINE.md](docs/AI-DOCUMENTARY-ENGINE.md)** | The fully-promptable production engine — a state-by-state pipeline from a source-style PDF → branding → script → Nano Banana character stills → Seedance 2.0 animation prompts → thumbnails. The operating manual future sessions run. |
+| **[GUIDE_full_text.txt](docs/GUIDE_full_text.txt)** | Verbatim source for the engine above — the OCR-recovered *Fern Animations* "AI Documentary Cloning Engine" (exact STATE wording + full output templates). |
+| **[Episode-01-Hayabusa2-Torifune-SCRIPT.md](episodes/01-hayabusa2-torifune/Episode-01-Hayabusa2-Torifune-SCRIPT.md)** | Episode 01 narration script with shot-by-shot `[VISUAL]` / `[TEXT]` / `[SFX/MUSIC]` cues. |
+| **[Episode-01-AI-IMAGE-PROMPT-PACK.md](episodes/01-hayabusa2-torifune/Episode-01-AI-IMAGE-PROMPT-PACK.md)** | A paste-ready AI-image prompt for every 🎨 still, locked to one consistent cinematic grade. |
+| **[Episode-01-FOOTAGE-SOURCING-LIST.md](episodes/01-hayabusa2-torifune/Episode-01-FOOTAGE-SOURCING-LIST.md)** | A specific, licensable source (+ backup + credit) for every 🎞️ real-footage cue. |
+| **[Hayabusa2 Torifune Flyby Research.txt](research/Hayabusa2%20Torifune%20Flyby%20Research.txt)** | The fact-checked deep-research dossier behind the script. |
+| `assets/voiceovers/*.m4a` | Voiceover narration recordings (studio and non-studio takes). |
+
+**Layout:** `docs/` (strategy + engine) · `episodes/01-hayabusa2-torifune/` (script, prompt pack, footage list) · `research/` (dossiers + `SOURCE PDF.pdf`) · `assets/` (`reference-images/`, `voiceovers/`, `models/`) · `hayabusa2/` (the Blender 3D project).
 
 ---
 
@@ -63,6 +67,8 @@ The script tags every shot by how it will be sourced:
 **Claude = the writers' room + automation assistant. Premiere = the edit bay.**
 
 Research → script → narrate → source/generate visuals → edit in Adobe Premiere → package (title + thumbnail) → cut shorts. Strategy, scripting, prompts, and sourcing live here in Markdown; the edit itself happens in Premiere.
+
+**Two production tracks.** The primary track is the hand-built one above — real footage + in-house Blender 3D + AI stills, narrated in a human voice, cut in Premiere. The second is the **[AI Documentary Engine](docs/AI-DOCUMENTARY-ENGINE.md)**: a state-by-state prompt pipeline that ingests a source-style PDF and runs all the way to Seedance animation prompts and thumbnails. Its Writing DNA is the formal spec of this channel's prose style; its mannequin visual look is adapted, not copied (awe-not-dread, our own cinematic language). See [GAME-PLAN.md](GAME-PLAN.md) §6.
 
 ---
 
