@@ -256,8 +256,8 @@ def _build_ionglow(mat):
     """
     # --- core tunable values ---
     GLOW_COLOR   = (0.15, 0.45, 1.0, 1.0)  # saturated cyan-blue
-    CORE_STRENGTH = 5.5                    # bright core (was 14 -> white blowout)
-    EDGE_STRENGTH = 1.6                    # soft dim edge of the disk
+    CORE_STRENGTH = 11.0                   # vivid bright core, matched to ref image 9 (14 = white blowout)
+    EDGE_STRENGTH = 3.0                    # soft dim edge, raised so the whole disk glows brighter
 
     mat.use_nodes = True
     nt = mat.node_tree
@@ -291,9 +291,10 @@ def _build_ionglow(mat):
     ramp = _get_or_make_node(nt, "IonGlow Falloff", "ShaderNodeValToRGB")
     cr = ramp.color_ramp
     cr.interpolation = 'EASE'  # smooth, soft shoulder
-    # Two-stop soft falloff: bright out to ~0.18 radius, fading to dark by ~0.5.
+    # Two-stop soft falloff: wider bright core (out to ~0.24 radius) fading to dark by ~0.5
+    # so the disks read as bigger, brighter blue glows (ref image 9).
     _set_ramp_stops(cr, [
-        (0.18, (1.0, 1.0, 1.0, 1.0)),
+        (0.24, (1.0, 1.0, 1.0, 1.0)),
         (0.50, (0.0, 0.0, 0.0, 1.0)),
     ])
 

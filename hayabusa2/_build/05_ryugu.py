@@ -58,8 +58,8 @@ OWNED_TEX_PREFIX = "HB2_RyuguDisp"
 # Whole-body geometry: a workable scale (NOT literal ~900 m, which would dwarf the
 # 6 m craft). ~160 BU mean diameter; orchestrator rescales for any given shot.
 BODY_RADIUS = 80.0          # mean equatorial radius (BU)  -> ~160 BU diameter
-BODY_OBLATE = 0.87          # polar / equatorial  (Ryugu ~876/1004)
-BODY_RIDGE_GAIN = 0.09      # extra equatorial bulge for the sharp ridge line
+BODY_OBLATE = 0.89          # polar / equatorial  (Ryugu ~876/1004)
+BODY_RIDGE_GAIN = 0.04      # subtle equatorial ridge (was 0.09 -> over-exaggerated diamond)
 
 # Close-surface dome footprint (keep what the orchestrator's ryugu cam expects).
 SURF_RADIUS = 14.0          # sphere radius (dome dims ~28 BU) ...
@@ -392,7 +392,7 @@ def _build_body(coll, mat):
     the diamond silhouette + sharp ridge -> layered displacement (large rubble +
     medium craters + fine bump). Centered at its own origin for the orchestrator.
     """
-    segs_u, segs_v = 128, 96
+    segs_u, segs_v = 160, 120   # denser mesh so the heavier displacement reads as crisp/jagged
     bm = bmesh.new()
     bmesh.ops.create_uvsphere(bm, u_segments=segs_u, v_segments=segs_v,
                               radius=BODY_RADIUS)
@@ -418,8 +418,11 @@ def _build_body(coll, mat):
         #   Mostly-linear taper for crisp angular flanks, a touch of cosine just to
         #   keep the poles from collapsing to a perfect point.
         taper = (1.0 - lat)
-        horiz_profile = 0.94 * taper + 0.06 * math.cos(phi)
-        # sharp equatorial ridge: narrow boost centred on the equator
+        # Rounder body: weight toward the spherical cos(phi) profile instead of the
+        # linear taper (was 0.94 linear -> sharp conical "diamond"). More cos = rounded
+        # flanks so the equator is not dramatically wider than the rest of the body.
+        horiz_profile = 0.45 * taper + 0.55 * math.cos(phi)
+        # subtle equatorial ridge: narrow boost centred on the equator
         ridge = math.exp(-(lat * 7.5) ** 2)      # ~1 at equator, ->0 quickly
         horiz_profile *= (1.0 + BODY_RIDGE_GAIN * ridge)
 
@@ -443,27 +446,35 @@ def _build_body(coll, mat):
     _link_only(body, coll)
 
     # --- layered displacement on the body ----------------------------------
-    # Kept gentle so it textures the surface (rubble + craters) WITHOUT drowning
-    # the diamond silhouette / equatorial ridge that the mesh shaping created.
+    # Heavier now: the diamond silhouette is deliberately softened, so the displacement
+    # no longer has to stay gentle. Big blocky rubble + a crisp angular crag layer +
+    # craters + fine grit make the body read JAGGED and rocky instead of smooth.
     # 1) large rubble undulation (blocky Voronoi)
     t_large = _new_musgrave_voronoi_tex("HB2_RyuguDisp_BodyL", size=0.6)
     m1 = body.modifiers.new("DispLarge", 'DISPLACE')
     m1.texture = t_large
-    m1.strength = BODY_RADIUS * 0.045
-    m1.mid_level = 0.55
+    m1.strength = BODY_RADIUS * 0.075
+    m1.mid_level = 0.5
     m1.direction = 'NORMAL'
-    # 2) medium craters / lumps (clouds)
-    t_med = _new_clouds_tex("HB2_RyuguDisp_BodyM", size=0.4, depth=4)
+    # 2) crisp angular crags / facets (finer blocky Voronoi) -> jagged silhouette
+    t_sharp = _new_musgrave_voronoi_tex("HB2_RyuguDisp_BodyS", size=1.4)
+    m_sharp = body.modifiers.new("DispSharp", 'DISPLACE')
+    m_sharp.texture = t_sharp
+    m_sharp.strength = BODY_RADIUS * 0.045
+    m_sharp.mid_level = 0.6        # bias outward so it carves crags more than pits
+    m_sharp.direction = 'NORMAL'
+    # 3) medium craters / lumps (clouds)
+    t_med = _new_clouds_tex("HB2_RyuguDisp_BodyM", size=0.4, depth=5)
     m2 = body.modifiers.new("DispMed", 'DISPLACE')
     m2.texture = t_med
-    m2.strength = BODY_RADIUS * 0.03
+    m2.strength = BODY_RADIUS * 0.05
     m2.mid_level = 0.5
     m2.direction = 'NORMAL'
-    # 3) fine surface bump (clouds, high freq)
+    # 4) fine surface grit (clouds, high freq)
     t_fine = _new_clouds_tex("HB2_RyuguDisp_BodyF", size=0.09, depth=5)
     m3 = body.modifiers.new("DispFine", 'DISPLACE')
     m3.texture = t_fine
-    m3.strength = BODY_RADIUS * 0.012
+    m3.strength = BODY_RADIUS * 0.016
     m3.mid_level = 0.5
     m3.direction = 'NORMAL'
 
@@ -473,9 +484,9 @@ def _build_body(coll, mat):
     # _anchor_to_body below). They are parented to HB2_RyuguBody so they follow
     # the body's runtime transform (the harness scales the body to 0.125 and
     # moves it for the hero shot).
-    pool = _build_rock_pool("HB2_RockPool_Body", count=16, seed0=7001)
+    pool = _build_rock_pool("HB2_RockPool_Body", count=20, seed0=7001)
     rng = random.Random(987654)
-    n_body_boulders = 280
+    n_body_boulders = 500          # denser random rubble field (was 280) scattered over the body
     # smooth envelope radius used only as a raycast START shell (well outside the
     # displaced surface, whose peaks reach ~BODY_RADIUS*1.045).
     Rb = BODY_RADIUS * 1.04
@@ -491,12 +502,12 @@ def _build_body(coll, mat):
         pz = Rb * nz * BODY_OBLATE
         # boulder sizes scaled to the body (a few % of radius)
         r = rng.random()
-        if r < 0.7:
-            s = BODY_RADIUS * rng.uniform(0.012, 0.03)
-        elif r < 0.93:
-            s = BODY_RADIUS * rng.uniform(0.03, 0.06)
+        if r < 0.55:
+            s = BODY_RADIUS * rng.uniform(0.015, 0.035)   # small
+        elif r < 0.85:
+            s = BODY_RADIUS * rng.uniform(0.035, 0.07)    # medium (more of these now)
         else:
-            s = BODY_RADIUS * rng.uniform(0.06, 0.1)
+            s = BODY_RADIUS * rng.uniform(0.07, 0.13)     # big blocks (bigger + more)
         me_rock = pool[rng.randrange(len(pool))]
         b = bpy.data.objects.new(f"HB2_BodyBoulder{i}", me_rock)
         # provisional placement on the smooth envelope (re-anchored below)

@@ -31,12 +31,14 @@ RYUGU_BODY_LOC   = (6.0, 34.0, -7.0)
 RYUGU_BODY_SCALE = 0.125
 
 # Per-scene camera rig (HB2_PreviewCam TRACK_TO HB2_AimRyugu).
-# Craft was rotated +90deg about Z (panels now along world-Y), so the hero views look more
-# down the X axis to keep the wings spread horizontally rather than foreshortened.
+# The craft sits at its natural build orientation: HB2_Root rotation Z = 0, so the solar
+# wings spread along world-X and the ion engines face world -Y. These views look across the
+# -Y/engine side so the X-spread wings read broadside (not foreshortened) and the blue
+# ion glow is toward camera. (Do NOT re-introduce the old +90deg Z root rotation.)
 CAM_RIG = {
-    "studio": dict(loc=(9.0, -4.5, 4.0), aim=(0.0, 0.0, 0.2), lens=48),
-    "cruise": dict(loc=(8.6, -5.2, 1.7), aim=(-1.0, 5.0, 0.7), lens=40),
-    "ryugu":  dict(loc=(8.0, -8.8, 3.0), aim=(1.3, 10.0, -0.5), lens=35),
+    "studio": dict(loc=(13.5, -15.5, 6.0), aim=(0.0, 0.0, -1.0), lens=38),  # pulled back further: bigger wings
+    "cruise": dict(loc=(8.0, -9.0, 2.8), aim=(-0.6, 1.8, 0.2), lens=22),  # wider for the bigger wings, Earth behind
+    "ryugu":  dict(loc=(10.5, -12.0, 4.6), aim=(1.5, 12.0, -1.0), lens=26),  # wider for the bigger wings
 }
 
 
@@ -99,11 +101,18 @@ def _place_ryugu_body():
         b.scale = (RYUGU_BODY_SCALE, RYUGU_BODY_SCALE, RYUGU_BODY_SCALE)
 
 
+def _aim(vec):
+    """Euler so a SUN's local -Z points along world `vec` (the direction light travels)."""
+    import mathutils
+    return mathutils.Vector(vec).to_track_quat('-Z', 'Y').to_euler()
+
+
 def _ensure_sun(name, energy, color, rot=None, angle_deg=None):
-    """Get-or-create a SUN. Rotation is set only on creation (preserves hand-set key/fill angles)."""
+    """Get-or-create a SUN and set energy/color (+ optional rotation / soft-shadow angle).
+    Rotation, when given, is set explicitly so the flyby key/fill/rim are aimed
+    deterministically per scene."""
     o = bpy.data.objects.get(name)
-    created = o is None
-    if created:
+    if o is None:
         d = bpy.data.lights.new(name + "Data", "SUN")
         o = bpy.data.objects.new(name, d)
         bpy.context.scene.collection.objects.link(o)
@@ -111,21 +120,77 @@ def _ensure_sun(name, energy, color, rot=None, angle_deg=None):
     o.data.color = color
     if angle_deg is not None:
         o.data.angle = math.radians(angle_deg)
-    if rot is not None and created:
+    if rot is not None:
         o.rotation_euler = rot
     o.hide_render = False
     o.hide_viewport = False
     return o
 
 
-def _setup_flyby_lights():
-    """Deep-space lighting for cruise/ryugu: hard key + cool fill (lifts the gold body so detail
-    reads) + cool-blue rim (separates the craft from black) — moody-but-legible, matching the JAXA
-    Hayabusa2 ion-engine renders. Fill was 0.3 (too dark); raised + a new rim sun added."""
-    _ensure_sun("HB2_Sun",     5.5, (1.0, 0.97, 0.92))                       # hard key (keep its angle)
-    _ensure_sun("HB2_FillSun", 1.8, (0.42, 0.58, 1.0), angle_deg=10.0)       # cool fill, raised from 0.3
-    _ensure_sun("HB2_RimSun",  3.2, (0.50, 0.70, 1.0),
-                rot=(math.radians(-58), 0.0, math.radians(132)), angle_deg=3.0)  # cool-blue back rim
+def _ensure_area(name, energy, size, loc, aim_at, color=(1.0, 1.0, 1.0)):
+    """Get-or-create a LOCAL area light. Unlike a sun, its inverse-square falloff lets it
+    light the nearby craft while barely touching the distant Earth — used as the cruise
+    craft fill so Earth can stay backlit."""
+    import mathutils
+    o = bpy.data.objects.get(name)
+    if o is None:
+        d = bpy.data.lights.new(name + "Data", "AREA")
+        o = bpy.data.objects.new(name, d)
+        bpy.context.scene.collection.objects.link(o)
+    o.data.energy = energy
+    o.data.size = size
+    o.data.color = color
+    o.location = mathutils.Vector(loc)
+    direction = mathutils.Vector(aim_at) - mathutils.Vector(loc)
+    o.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
+    o.hide_render = False
+    o.hide_viewport = False
+    return o
+
+
+def _setup_flyby_lights(name):
+    """Per-scene deep-space lighting (cruise / ryugu).
+
+    cruise -- "sun behind Earth": the key is aimed so its light travels FROM the Earth
+      (~(-4,27,4)) toward the craft, backlighting it and rim-lighting Earth's atmosphere
+      (offset slightly off the camera-Earth axis so Earth keeps a lit crescent, not a
+      black disk). A strong cool FILL from the camera side then lifts the craft's
+      engine-side detail so it still reads (the chosen "backlit Earth + legible craft"
+      look), plus a cool-blue rim for separation against space.
+
+    ryugu -- "lights on": a bright key over the camera's shoulder so BOTH the craft and
+      the asteroid read clearly (the old shared setup left this shot too dark), opened up
+      by a cool fill + cool-blue rim.
+
+    Sun directions are set explicitly per scene (overriding any prior angle)."""
+    if name == "cruise":
+        # Key BEHIND Earth: light travels from Earth(~-4,27,4) toward the craft so the camera
+        # sees Earth's far limb glowing (backlit) and the craft is rim-lit from the Earth side.
+        _ensure_sun("HB2_Sun",     7.5, (1.0, 0.96, 0.88), angle_deg=0.6,
+                    rot=_aim((5.0, -21.0, -3.0)))
+        # BOTH directional fill AND rim are OFF for cruise — any camera-side global sun would
+        # front-light Earth and kill the backlit look. The craft is lit by a LOCAL area light.
+        _ensure_sun("HB2_FillSun", 0.0, (0.55, 0.68, 1.0), angle_deg=8.0,
+                    rot=_aim((-10.5, 18.5, -3.0)))
+        _ensure_sun("HB2_RimSun",  0.0, (0.50, 0.70, 1.0), angle_deg=3.0,
+                    rot=_aim((2.0, 4.0, 4.0)))
+        # LOCAL fill beside the craft (camera side) — lifts the engine-side detail so it reads,
+        # with inverse-square falloff that barely reaches the distant Earth (keeps Earth backlit).
+        _ensure_area("HB2_FlybyFill", energy=1400.0, size=6.0,
+                     loc=(5.0, -6.0, 3.0), aim_at=(0.0, 0.0, 0.0),
+                     color=(0.92, 0.94, 1.0))
+        # Dim dedicated Earth-fill: lights Earth's camera side as a readable lit gibbous
+        # (terminator down the disc) while only grazing the craft front, so Earth reads
+        # brighter without killing the backlit look or washing the craft.
+        _ensure_sun("HB2_EarthFill", 1.6, (0.95, 0.97, 1.0), angle_deg=1.0,
+                    rot=_aim((9.0, 14.0, 7.0)))
+    elif name == "ryugu":
+        _ensure_sun("HB2_Sun",     6.5, (1.0, 0.97, 0.93), angle_deg=0.6,
+                    rot=_aim((-2.0, 20.0, -11.0)))     # key over the camera's shoulder (dimmed from 8.0)
+        _ensure_sun("HB2_FillSun", 3.0, (0.55, 0.68, 1.0), angle_deg=10.0,
+                    rot=_aim((9.0, 14.0, 4.0)))        # cool fill opening the shadow side
+        _ensure_sun("HB2_RimSun",  3.2, (0.50, 0.70, 1.0), angle_deg=3.0,
+                    rot=_aim((-6.0, 5.0, 6.0)))        # cool-blue rim
 
 
 def setup_scene(name):
@@ -144,13 +209,15 @@ def setup_scene(name):
         sc.world = black
         for l in STUDIO_LIGHTS: _hide_obj(l, False)
         for l in SUNS:          _hide_obj(l, True)
+        _hide_obj("HB2_FlybyFill", True)               # cruise-only local fill
+        _hide_obj("HB2_EarthFill", True)               # cruise-only Earth fill
         for o in ION_GLOW:      _hide_obj(o, True)     # engines off, clean beauty
         _set_prefix_hide(EARTH_P, True)
         _set_prefix_hide(RYUGU_SURF_P, True)
         _set_prefix_hide(RYUGU_BODY_P, True)           # asteroid out of the studio shot
     elif name == "cruise":
         sc.world = starfield
-        _setup_flyby_lights()
+        _setup_flyby_lights(name)
         for l in STUDIO_LIGHTS: _hide_obj(l, True)
         for l in SUNS:          _hide_obj(l, False)
         for o in ION_GLOW:      _hide_obj(o, False)    # ion engines firing
@@ -159,9 +226,11 @@ def setup_scene(name):
         _set_prefix_hide(RYUGU_BODY_P, True)           # no asteroid in deep-space cruise
     elif name == "ryugu":
         sc.world = starfield
-        _setup_flyby_lights()
+        _setup_flyby_lights(name)
         for l in STUDIO_LIGHTS: _hide_obj(l, True)
         for l in SUNS:          _hide_obj(l, False)
+        _hide_obj("HB2_FlybyFill", True)               # cruise-only local fill
+        _hide_obj("HB2_EarthFill", True)               # cruise-only Earth fill
         for o in ION_GLOW:      _hide_obj(o, True)     # ion off during descent
         _set_prefix_hide(EARTH_P, True)
         _set_prefix_hide(RYUGU_SURF_P, True)           # close surface reserved for animation

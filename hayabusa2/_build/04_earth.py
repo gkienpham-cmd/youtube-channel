@@ -427,7 +427,7 @@ def _build_atmo_material():
     transp = nodes.new("ShaderNodeBsdfTransparent"); transp.location = (300, 150)
     emit = nodes.new("ShaderNodeEmission");      emit.location = (300, -120)
     emit.inputs["Color"].default_value = (ATMO_COLOR[0], ATMO_COLOR[1], ATMO_COLOR[2], 1.0)
-    emit.inputs["Strength"].default_value = 0.45
+    emit.inputs["Strength"].default_value = 0.60
 
     # Layer Weight (Facing) -> strong at the limb, ~0 at the center.
     lw = nodes.new("ShaderNodeLayerWeight"); lw.location = (-200, 0)
