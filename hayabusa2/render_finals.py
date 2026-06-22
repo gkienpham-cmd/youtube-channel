@@ -6,6 +6,7 @@ Headless usage:
   Blender --background hayabusa2.blend --python render_finals.py -- studio
   Blender --background hayabusa2.blend --python render_finals.py -- cruise
   Blender --background hayabusa2.blend --python render_finals.py -- ryugu
+  Blender --background hayabusa2.blend --python render_finals.py -- flyby
 Optional flags after the scene name:
   --preview         1280x720 @ 64 samples (fast check) instead of 3840x2160 @ 256
   --out=/abs/path.png   override output path
@@ -22,13 +23,23 @@ ION_GLOW      = ["HB2_IonGlow0", "HB2_IonGlow1", "HB2_IonGlow2", "HB2_IonGlow3"]
 EARTH_P       = ("HB2_Earth",)                                       # surface + cloud + atmo shells
 RYUGU_SURF_P  = ("HB2_RyuguSurface", "HB2_Boulder")                  # close descent surface (anim use)
 RYUGU_BODY_P  = ("HB2_RyuguBody", "HB2_BodyBoulder", "HB2_Otohime")  # whole spinning-top body
-OUT_NAME      = {"studio": "studio_beauty", "cruise": "cruise", "ryugu": "ryugu"}
+TORIFUNE_BODY_P = ("HB2_TorifuneBody", "HB2_TorifuneBoulder")        # elongated flyby asteroid shard
+OUT_NAME      = {"studio": "studio_beauty", "cruise": "cruise", "ryugu": "ryugu",
+                 "flyby": "torifune_flyby"}
 
 # Whole-Ryugu placement for the ryugu hero shot. The body is modelled ~170 BU at origin (engulfing
 # the craft), so for this shot it is scaled down + pushed back to read as a big body BESIDE the 6 m
 # craft (artistic scale, like reference image 3/6). Boulders are parented to the body so they follow.
 RYUGU_BODY_LOC   = (6.0, 34.0, -7.0)
 RYUGU_BODY_SCALE = 0.125
+
+# Torifune flyby placement: body built ~180 BU long-axis at origin; scale down + push
+# front-right so it reads as a big elongated shard the craft flies past. Boulders are
+# parented to the body so they follow. The ROT angles the long axis in depth (a 3/4 view)
+# so the body reads as a chunky 3D shard rather than a flat broadside ellipse.
+TORIFUNE_BODY_LOC   = (-2.5, 18.5, 0.4)
+TORIFUNE_BODY_SCALE = 0.108
+TORIFUNE_BODY_ROT   = (math.radians(14.0), math.radians(-16.0), math.radians(40.0))
 
 # Per-scene camera rig (HB2_PreviewCam TRACK_TO HB2_AimRyugu).
 # The craft sits at its natural build orientation: HB2_Root rotation Z = 0, so the solar
@@ -39,6 +50,7 @@ CAM_RIG = {
     "studio": dict(loc=(13.5, -15.5, 6.0), aim=(0.0, 0.0, -1.0), lens=38),  # pulled back further: bigger wings
     "cruise": dict(loc=(8.0, -9.0, 2.8), aim=(-0.6, 1.8, 0.2), lens=22),  # wider for the bigger wings, Earth behind
     "ryugu":  dict(loc=(10.5, -12.0, 4.6), aim=(1.5, 12.0, -1.0), lens=26),  # wider for the bigger wings
+    "flyby":  dict(loc=(7.5, -7.5, 2.4), aim=(-2.0, 10.0, 0.4), lens=28),  # -Y/engine side, aim past craft's shoulder at Torifune
 }
 
 
@@ -101,6 +113,16 @@ def _place_ryugu_body():
         b.scale = (RYUGU_BODY_SCALE, RYUGU_BODY_SCALE, RYUGU_BODY_SCALE)
 
 
+def _place_torifune_body():
+    """Scale + position + orient the elongated Torifune body for the flyby shot (boulders parented to it follow)."""
+    import mathutils
+    b = bpy.data.objects.get("HB2_TorifuneBody")
+    if b:
+        b.location = mathutils.Vector(TORIFUNE_BODY_LOC)
+        b.scale = (TORIFUNE_BODY_SCALE, TORIFUNE_BODY_SCALE, TORIFUNE_BODY_SCALE)
+        b.rotation_euler = mathutils.Euler(TORIFUNE_BODY_ROT, 'XYZ')
+
+
 def _aim(vec):
     """Euler so a SUN's local -Z points along world `vec` (the direction light travels)."""
     import mathutils
@@ -149,7 +171,7 @@ def _ensure_area(name, energy, size, loc, aim_at, color=(1.0, 1.0, 1.0)):
 
 
 def _setup_flyby_lights(name):
-    """Per-scene deep-space lighting (cruise / ryugu).
+    """Per-scene deep-space lighting (cruise / ryugu / flyby).
 
     cruise -- "sun behind Earth": the key is aimed so its light travels FROM the Earth
       (~(-4,27,4)) toward the craft, backlighting it and rim-lighting Earth's atmosphere
@@ -191,10 +213,27 @@ def _setup_flyby_lights(name):
                     rot=_aim((9.0, 14.0, 4.0)))        # cool fill opening the shadow side
         _ensure_sun("HB2_RimSun",  3.2, (0.50, 0.70, 1.0), angle_deg=3.0,
                     rot=_aim((-6.0, 5.0, 6.0)))        # cool-blue rim
+    elif name == "flyby":
+        # Dramatic single key raking the elongated asteroid; perihelion ~0.81 AU => ~1.5x sun
+        # so the key is strong. Light travels toward (-9,2,-8): from the UPPER-RIGHT, across and
+        # down the X-long body (NOT parallel to the camera's view, which front-lights it flat) so
+        # craters/boulders throw long shadows and a hard terminator sculpts the 3D form.
+        _ensure_sun("HB2_Sun",     9.0, (1.0, 0.95, 0.88), angle_deg=0.35,
+                    rot=_aim((-9.0, 2.0, -8.0)))       # strong key, raking from upper-right
+        _ensure_sun("HB2_FillSun", 1.1, (0.55, 0.68, 1.0), angle_deg=9.0,
+                    rot=_aim((6.0, -7.0, 2.5)))        # dim cool fill from camera/-Y side, lifts shadow side
+        _ensure_sun("HB2_RimSun",  2.6, (0.50, 0.70, 1.0), angle_deg=3.0,
+                    rot=_aim((-3.0, -2.0, 5.0)))       # cool-blue back-rim, pops craft + limb off starfield
+        # LOCAL area beside the craft (engine side) — lifts the gold/black MLI so the craft reads
+        # as the foreground hero; inverse-square falloff barely reaches the y=16 asteroid. Brighter
+        # + near-neutral so the gold pops (vs the cool cruise fill). Same call style as cruise.
+        _ensure_area("HB2_FlybyFill", energy=1500.0, size=5.0,
+                     loc=(5.5, -5.5, 2.8), aim_at=(0.0, 0.0, 0.0),
+                     color=(0.96, 0.95, 0.98))
 
 
 def setup_scene(name):
-    """Toggle camera / lights / world / visibility for one of: studio | cruise | ryugu.
+    """Toggle camera / lights / world / visibility for one of: studio | cruise | ryugu | flyby.
 
     NOTE: HB2_Earth + shells AND the Ryugu surface/boulders all live in the
     'Environment' collection, so visibility must be controlled at the OBJECT level
@@ -236,6 +275,18 @@ def setup_scene(name):
         _set_prefix_hide(RYUGU_SURF_P, True)           # close surface reserved for animation
         _set_prefix_hide(RYUGU_BODY_P, False)          # show the whole spinning-top body
         _place_ryugu_body()
+    elif name == "flyby":
+        sc.world = starfield
+        _setup_flyby_lights(name)
+        for l in STUDIO_LIGHTS: _hide_obj(l, True)
+        for l in SUNS:          _hide_obj(l, False)
+        _hide_obj("HB2_EarthFill", True)               # cruise-only Earth fill (HB2_FlybyFill stays on)
+        for o in ION_GLOW:      _hide_obj(o, False)    # engines firing -> high-speed flyby, signature blue
+        _set_prefix_hide(EARTH_P, True)
+        _set_prefix_hide(RYUGU_SURF_P, True)
+        _set_prefix_hide(RYUGU_BODY_P, True)           # no spinning-top Ryugu in the flyby
+        _set_prefix_hide(TORIFUNE_BODY_P, False)       # show the elongated Torifune shard
+        _place_torifune_body()
     else:
         raise ValueError("unknown scene: %r" % name)
 
