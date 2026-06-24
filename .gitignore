@@ -12,3 +12,6 @@
 # Python
 __pycache__/
 *.pyc
+
+# Animation render outputs (large 4K PNG sequences + review mp4s — regenerate via render_anim.py)
+hayabusa2/renders/anim/
